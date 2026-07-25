@@ -194,51 +194,10 @@ export class TeamClass extends Document<Types.ObjectId> {
         await this.save();
         return { ok: true };
     }
-    async getCategoryChannel() {
+    /** Looks up one of this team's provisioned Discord channels by its `discord` sub-key. */
+    async getChannel(key: Exclude<keyof TeamClass["discord"], "roleId">) {
         let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.category.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getPlayerActivityChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.playerActivity.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getTeamChatChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.teamChat.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getInformationChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.information.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getServersChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.servers.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getSwitchesChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.switches.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getAlarmsChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.alarms.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getStorageMonitorsChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel = guild?.channels.cache.get(this.discord.storageMonitors.id);
+        let channel = guild?.channels.cache.get(this.discord[key].id);
         if (channel?.isTextBased()) return null;
         return channel;
     }
