@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useLoaderData, useRevalidator, type LoaderFunctionArgs } from "react-router-dom";
+import { Radio } from "lucide-react";
 import { GuildSubNav } from "../components/GuildSubNav";
 import { TeamSubNav } from "../components/TeamSubNav";
 import { EmptyState, Table, Tbody, Td, Th, Thead, Tr } from "../components/Table";
+import { SectionCard } from "../components/SectionCard";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
 interface TeamMember {
@@ -21,6 +23,18 @@ interface TeamServer {
     pairedItemCounts: { smartSwitch: number; smartAlarm: number; storageMonitor: number };
 }
 
+interface TeamStatus {
+    online: string[];
+    offline: string[];
+    dead: string[];
+}
+
+interface RecentChatMessage {
+    name: string;
+    message: string;
+    time: number;
+}
+
 interface TeamDetailResponse {
     id: string;
     name: string;
@@ -28,6 +42,11 @@ interface TeamDetailResponse {
     activeServerId: string | null;
     activeCredentialUserId: string | null;
     servers: TeamServer[];
+    enabledModules: string[];
+    connected: boolean;
+    status: TeamStatus | null;
+    recentChat: RecentChatMessage[] | null;
+    raidAlertRadiusMeters: number | null;
 }
 
 interface AddableUser {
@@ -67,6 +86,9 @@ export function Component() {
     const [addSubmitting, setAddSubmitting] = useState(false);
     const [addError, setAddError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
+    const [radiusInput, setRadiusInput] = useState(String(data.raidAlertRadiusMeters ?? ""));
+    const [radiusSaving, setRadiusSaving] = useState(false);
+    const [radiusError, setRadiusError] = useState<string | null>(null);
 
     const addMember = async () => {
         if (!selectedUserId) return;
@@ -121,7 +143,30 @@ export function Component() {
         revalidator.revalidate();
     };
 
+    const saveRadius = async () => {
+        const meters = Number(radiusInput);
+        if (!Number.isFinite(meters) || meters <= 0) {
+            setRadiusError("Radius must be a positive number");
+            return;
+        }
+        setRadiusSaving(true);
+        setRadiusError(null);
+        const res = await fetch(`/api/guilds/${guildId}/teams/${teamId}/raid-alert-radius`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ meters }),
+        });
+        const json = await res.json();
+        setRadiusSaving(false);
+        if (!res.ok) {
+            setRadiusError(json.error ?? "Failed to save");
+            return;
+        }
+        revalidator.revalidate();
+    };
+
     if (!guildId || !teamId) return null;
+    const hasModule = (moduleId: string) => data.enabledModules.includes(moduleId);
 
     return (
         <div>
@@ -132,6 +177,46 @@ export function Component() {
             <h1 className="mt-2 mb-2 text-2xl font-semibold text-white">{data.name}</h1>
             <TeamSubNav guildId={guildId} teamId={teamId} />
             {actionError && <p className="mb-4 text-sm text-red-400">{actionError}</p>}
+
+            {hasModule("team-tracker") && data.status && (
+                <div className="mb-6">
+                    <SectionCard icon={<Radio className="h-4 w-4" />} title="Team status">
+                        <div className="grid divide-y divide-border/60 sm:grid-cols-3 sm:divide-y-0 sm:divide-x">
+                            {(["online", "offline", "dead"] as const).map((key) => (
+                                <div key={key} className="p-3">
+                                    <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                        {key} ({data.status![key].length})
+                                    </p>
+                                    <p className="text-sm text-neutral-300">{data.status![key].join(", ") || "—"}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </SectionCard>
+                </div>
+            )}
+
+            {hasModule("raid-alerts") && (
+                <div className="mb-6 flex items-center gap-2 rounded-lg border border-border bg-surface p-4">
+                    <span className="text-sm text-neutral-300">Raid alert radius</span>
+                    <input
+                        type="number"
+                        min={1}
+                        value={radiusInput}
+                        onChange={(e) => setRadiusInput(e.target.value)}
+                        disabled={radiusSaving}
+                        className="w-24 rounded-md border border-border bg-canvas px-2 py-1 text-sm text-white focus:border-accent focus:outline-none disabled:opacity-50"
+                    />
+                    <span className="text-sm text-neutral-500">meters</span>
+                    <button
+                        onClick={saveRadius}
+                        disabled={radiusSaving}
+                        className="ml-auto rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-black transition-colors hover:bg-accent-hover disabled:opacity-50"
+                    >
+                        {radiusSaving ? "Saving…" : "Save"}
+                    </button>
+                    {radiusError && <p className="text-xs text-red-400">{radiusError}</p>}
+                </div>
+            )}
 
             <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-neutral-500">Members</h2>
             {data.users.length === 0 ? (

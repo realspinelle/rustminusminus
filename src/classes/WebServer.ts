@@ -5,6 +5,7 @@ import { authRoutes } from "./routes/authRoutes";
 import { modulesRoutes } from "./routes/modulesRoutes";
 import { guildsRoutes } from "./routes/guildsRoutes";
 import { teamsRoutes } from "./routes/teamsRoutes";
+import { teamActionsRoutes } from "./routes/teamActionsRoutes";
 import { permissionGroupsRoutes } from "./routes/permissionGroupsRoutes";
 import { chatLinksRoutes } from "./routes/chatLinksRoutes";
 import { renderPage } from "../server/render";
@@ -59,6 +60,7 @@ export class WebServer extends Elysia {
                     .use(modulesRoutes)
                     .use(guildsRoutes)
                     .use(teamsRoutes)
+                    .use(teamActionsRoutes)
                     .use(permissionGroupsRoutes)
                     .use(chatLinksRoutes)
             );
