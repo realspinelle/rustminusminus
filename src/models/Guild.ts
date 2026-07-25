@@ -1,6 +1,4 @@
 import { Document, model, Schema, Types } from "mongoose";
-import { UserClass, UserModel } from "./User";
-import { ServerModel } from "./Server";
 import { TeamModel } from "./Team";
 import { DiscordBot } from "../classes/DiscordBot";
 import { getRandomHexColor } from "../utils";
@@ -215,22 +213,6 @@ export class GuildClass extends Document<Types.ObjectId> {
     async findTeamByName(name: string) {
         return (await this.getTeams()).find(e => e.name == name) || null;
     }
-
-    // async findUserTeam(user: UserClass) {
-    //     return (await this.getTeams()).find(e => e.users.includes(user.id)) || null;
-    // }
-
-    // async findTeamServers(name: string) {
-    //     let team = await this.findTeamByName(name);
-    //     if (!team) return null;
-    //     let servers: string[] = [];
-    //     for (let userId of await team.getUsers()) {
-    //         let user = await UserModel.findById(userId);
-    //         if (!user) continue;
-    //         servers.push(...user.credentials.servers.map(e => e.serverId));
-    //     }
-    //     return Promise.all([...new Set(servers)].map(async a => await ServerModel.findOne({ serverId: a })));
-    // }
 }
 
 GuildSchema.loadClass(GuildClass);
