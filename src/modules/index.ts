@@ -8,6 +8,7 @@ import { chatRelay } from "./chat-relay/index";
 import { serverInfoPanel } from "./server-info-panel/index";
 import { mapEvents } from "./map-events/index";
 import { raidAlerts } from "./raid-alerts/index";
+import { vendingSearch } from "./vending-search/index";
 import type { RustModule } from "./types";
 
 export const modules: RustModule[] = [
@@ -20,6 +21,7 @@ export const modules: RustModule[] = [
     serverInfoPanel,
     mapEvents,
     raidAlerts,
+    vendingSearch,
 ];
 
 for (const mod of modules) {
