@@ -8,6 +8,7 @@ import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 interface TeamMember {
     id: string;
     userId: string;
+    displayName: string | null;
 }
 
 interface TeamServer {
@@ -144,7 +145,10 @@ export function Component() {
                             const isActive = user.id === data.activeCredentialUserId;
                             return (
                                 <Tr key={user.id}>
-                                    <Td className="font-mono text-xs text-neutral-300">{user.userId}</Td>
+                                    <Td>
+                                        <div className="text-sm text-white">{user.displayName ?? "Unknown user"}</div>
+                                        <div className="font-mono text-xs text-neutral-500">{user.userId}</div>
+                                    </Td>
                                     <Td className="text-right">
                                         {isActive ? (
                                             <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
