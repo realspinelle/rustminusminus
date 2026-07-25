@@ -3,6 +3,7 @@ import type { Types } from "mongoose";
 import type { TeamClass } from "../models/Team";
 import { ServerModel } from "../models/Server";
 import { getActiveRustplus } from "./connections";
+import { withCache } from "../utils";
 
 interface ItemDef {
     name: string;
@@ -42,22 +43,9 @@ type TeamServer = TeamClass["servers"][number];
 const SNAPSHOT_TTL_MS = 4_000;
 const MAP_TTL_MS = 5 * 60_000;
 
-/**
- * De-dupes and rate-limits calls to the real Rust+ server: without this, every dashboard
- * viewer (and every switch toggle, which reloads the page's data) triggered its own round
- * of per-entity RCON calls, which was enough concurrent load to crash the game server.
- */
-function withCache<T>(cache: Map<string, { expires: number; promise: Promise<T> }>, key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
-    const hit = cache.get(key);
-    if (hit && hit.expires > Date.now()) return hit.promise;
-    const promise = fn().catch(err => {
-        cache.delete(key);
-        throw err;
-    });
-    cache.set(key, { expires: Date.now() + ttlMs, promise });
-    return promise;
-}
-
+// De-dupes and rate-limits calls to the real Rust+ server via withCache: without this, every
+// dashboard viewer (and every switch toggle, which reloads the page's data) triggered its own
+// round of per-entity RCON calls, which was enough concurrent load to crash the game server.
 const snapshotCache = new Map<string, { expires: number; promise: Promise<ServerSnapshot | { error: string }> }>();
 const mapCache = new Map<string, { expires: number; promise: Promise<Uint8Array | { error: string }> }>();
 
