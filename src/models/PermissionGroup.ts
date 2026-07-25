@@ -1,6 +1,7 @@
 import { Document, model, Schema, Types } from "mongoose";
 import { DiscordBot } from "../classes/DiscordBot";
 import { getRandomHexColor } from "../utils";
+import { grantRole, revokeRole } from "../utils/discordRoles";
 
 const PermissionGroupSchema = new Schema(
     {
@@ -31,26 +32,13 @@ export class PermissionGroupClass extends Document<Types.ObjectId> {
     async addMember(discordUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
         const discordGuild = this.getDiscordGuild();
         if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
-        const member = discordGuild.members.cache.get(discordUserId)
-            ?? await discordGuild.members.fetch(discordUserId).catch(() => null);
-        if (!member) return { ok: false, error: "Cant find that user in the server" };
-        if (member.roles.cache.has(this.roleId)) return { ok: true };
-        const botMember = discordGuild.members.me;
-        if (!botMember) return { ok: false, error: "Cant find the bot in the server" };
-        if (!botMember.permissions.has("ManageRoles")) return { ok: false, error: "This bot doesnt have Manage Roles permission" };
-        if (botMember.roles.highest.position <= member.roles.highest.position) return { ok: false, error: "Make the bot role the highest on the server or manually assign the role" };
-        await member.roles.add(this.roleId);
-        return { ok: true };
+        return grantRole(discordGuild, this.roleId, discordUserId, "ManageRoles", "This bot doesnt have Manage Roles permission");
     }
 
     async removeMember(discordUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
         const discordGuild = this.getDiscordGuild();
         if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
-        const member = discordGuild.members.cache.get(discordUserId)
-            ?? await discordGuild.members.fetch(discordUserId).catch(() => null);
-        if (!member) return { ok: false, error: "Cant find that user in the server" };
-        if (member.roles.cache.has(this.roleId)) await member.roles.remove(this.roleId);
-        return { ok: true };
+        return revokeRole(discordGuild, this.roleId, discordUserId);
     }
 
     /** Current members, read straight off the linked Discord role - no separate list to fetch or desync. */

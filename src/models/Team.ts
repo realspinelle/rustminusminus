@@ -4,6 +4,7 @@ import { ServerModel } from "./Server";
 import { connectTeam, disconnectTeam, getActiveRustplus } from "../rustplus/connections";
 import { GuildModel } from "./Guild";
 import { registry } from "../modules/ModuleRegistry";
+import { grantRole } from "../utils/discordRoles";
 
 const ServerSchema = {
     serverId: { type: String, required: true },
@@ -187,16 +188,8 @@ export class TeamClass extends Document<Types.ObjectId> {
         if (this.users.some(id => id.equals(userDb._id))) return { ok: false, error: "This user is already in this team" };
         const discordGuild = (await this.getGuild())?.getDiscordGuild();
         if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
-        const member = discordGuild.members.cache.get(discordUserId)
-            ?? await discordGuild.members.fetch(discordUserId).catch(() => null);
-        if (!member) return { ok: false, error: "Cant find that user in the server" };
-        if (!member.roles.cache.has(this.discord.roleId)) {
-            const botMember = discordGuild.members.me;
-            if (!botMember) return { ok: false, error: "Cant find the bot in the server" };
-            if (!botMember.permissions.has("Administrator")) return { ok: false, error: "This bot doesnt have administrator permissions" };
-            if (botMember.roles.highest.position <= member.roles.highest.position) return { ok: false, error: "Make the bot role the highest on the server or manually assign the role" };
-            await member.roles.add(this.discord.roleId);
-        }
+        const result = await grantRole(discordGuild, this.discord.roleId, discordUserId, "Administrator", "This bot doesnt have administrator permissions");
+        if (!result.ok) return result;
         this.users.push(userDb._id);
         await this.save();
         return { ok: true };
