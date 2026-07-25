@@ -1,6 +1,6 @@
 import { useParams, useLoaderData, useRevalidator, type LoaderFunctionArgs } from "react-router-dom";
 import { GuildSubNav } from "../components/GuildSubNav";
-import { Toggle } from "../components/Toggle";
+import { ModuleToggleList } from "../components/ModuleToggleList";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
 interface ModuleSummary {
@@ -47,26 +47,7 @@ export function Component() {
             <p className="mb-6 text-sm text-neutral-500">
                 Requires Manage Guild permission or the <span className="font-mono">modules.manage</span> permission group.
             </p>
-            {data.modules.length === 0 ? (
-                <p className="text-sm text-neutral-500">No guild-scoped modules registered.</p>
-            ) : (
-                <div className="flex flex-col gap-3">
-                    {data.modules.map((mod) => (
-                        <div key={mod.id} className="rounded-lg border border-border bg-surface p-4">
-                            <div className="flex items-start justify-between gap-4">
-                                <div>
-                                    <span className="font-medium text-white">{mod.name}</span>
-                                    <p className="mt-1 text-sm text-neutral-400">{mod.description}</p>
-                                </div>
-                                <Toggle
-                                    checked={mod.enabled}
-                                    onChange={(checked) => toggle(mod.id, checked)}
-                                />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+            <ModuleToggleList modules={data.modules} emptyText="No guild-scoped modules registered." onToggle={toggle} />
         </div>
     );
 }
