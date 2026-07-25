@@ -1,0 +1,29 @@
+{
+  "name": "rustminusminus",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/bun": "latest",
+    "tailwindcss": "^4.3.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@elysiajs/static": "^1.4.6",
+    "@types/react": "^19.2.3",
+    "@types/react-dom": "^19.2.2",
+    "axios": "^1.13.2",
+    "bun-css-loader": "^1.4.2",
+    "discord.js": "^14.24.2",
+    "elysia": "^1.4.15",
+    "mongoose": "^8.19.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-helmet-async": "^2.0.5",
+    "react-router-dom": "^7.9.5",
+    "rustminus": "^0.1.1"
+  }
+}

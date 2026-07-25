@@ -1,0 +1,246 @@
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { GuildSubNav } from "../components/GuildSubNav";
+import { EmptyState } from "../components/Table";
+
+interface PermissionDefinition {
+    id: string;
+    label: string;
+    description: string;
+    status: "enforced" | "reserved";
+}
+
+interface GroupDiscordUser {
+    userId: string;
+    displayName: string;
+}
+
+interface PermissionGroupDetailResponse {
+    id: string;
+    name: string;
+    permissions: string[];
+    discordUsers: GroupDiscordUser[];
+}
+
+interface AssignableMember {
+    userId: string;
+    displayName: string;
+}
+
+export default () => {
+    const { guildId, groupId } = useParams<{ guildId: string; groupId: string }>();
+    const navigate = useNavigate();
+    const [data, setData] = useState<PermissionGroupDetailResponse | null>(null);
+    const [definitions, setDefinitions] = useState<PermissionDefinition[] | null>(null);
+    const [assignableMembers, setAssignableMembers] = useState<AssignableMember[] | null>(null);
+    const [selectedUserId, setSelectedUserId] = useState("");
+    const [pending, setPending] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const load = () => {
+        if (!guildId || !groupId) return;
+        fetch(`/api/guilds/${guildId}/permission-groups/${groupId}`)
+            .then(async (res) => {
+                const json = await res.json();
+                if (!res.ok || typeof json.id !== "string") return;
+                setData(json);
+            });
+    };
+
+    const loadDefinitions = () => {
+        if (!guildId) return;
+        fetch(`/api/guilds/${guildId}/permission-groups/definitions`)
+            .then((res) => res.json())
+            .then((json) => setDefinitions(Array.isArray(json) ? json : []));
+    };
+
+    const loadAssignableMembers = () => {
+        if (!guildId || !groupId) return;
+        fetch(`/api/guilds/${guildId}/permission-groups/${groupId}/assignable-members`)
+            .then((res) => res.json())
+            .then((json) => setAssignableMembers(Array.isArray(json) ? json : []));
+    };
+
+    useEffect(load, [guildId, groupId]);
+    useEffect(loadDefinitions, [guildId]);
+    useEffect(loadAssignableMembers, [guildId, groupId]);
+
+    const togglePermission = async (permissionId: string, enabled: boolean) => {
+        if (!data) return;
+        const permissions = enabled
+            ? [...data.permissions, permissionId]
+            : data.permissions.filter((p) => p !== permissionId);
+        setPending(permissionId);
+        await fetch(`/api/guilds/${guildId}/permission-groups/${groupId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ permissions }),
+        });
+        setPending(null);
+        load();
+    };
+
+    const addMember = async () => {
+        if (!selectedUserId) return;
+        setPending("add-member");
+        setError(null);
+        const res = await fetch(`/api/guilds/${guildId}/permission-groups/${groupId}/members`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: selectedUserId }),
+        });
+        const json = await res.json();
+        setPending(null);
+        if (!res.ok) {
+            setError(json.error ?? "Failed to add member");
+            return;
+        }
+        setSelectedUserId("");
+        load();
+        loadAssignableMembers();
+    };
+
+    const removeMember = async (userId: string) => {
+        setPending(userId);
+        await fetch(`/api/guilds/${guildId}/permission-groups/${groupId}/members/${userId}`, { method: "DELETE" });
+        setPending(null);
+        load();
+        loadAssignableMembers();
+    };
+
+    const deleteGroup = async () => {
+        if (!confirm(`Delete permission group "${data?.name}"?`)) return;
+        await fetch(`/api/guilds/${guildId}/permission-groups/${groupId}`, { method: "DELETE" });
+        navigate(`/guild/${guildId}/permissions`);
+    };
+
+    if (!guildId || !groupId) return null;
+
+    const enforced = definitions?.filter((d) => d.status === "enforced") ?? [];
+    const reserved = definitions?.filter((d) => d.status === "reserved") ?? [];
+
+    return (
+        <div>
+            <GuildSubNav guildId={guildId} />
+            <Link to={`/guild/${guildId}/permissions`} className="text-sm text-neutral-500 hover:text-white">
+                ← Permissions
+            </Link>
+            {!data ? (
+                <p className="mt-4 text-sm text-neutral-500">Loading...</p>
+            ) : (
+                <>
+                    <div className="mt-2 mb-6 flex items-center justify-between">
+                        <h1 className="text-2xl font-semibold text-white">{data.name}</h1>
+                        <button
+                            onClick={deleteGroup}
+                            className="rounded-md border border-border px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:border-red-400 hover:text-red-400"
+                        >
+                            Delete group
+                        </button>
+                    </div>
+
+                    <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-neutral-500">Permissions</h2>
+                    <div className="mb-3 flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
+                        {enforced.map((def) => {
+                            const checked = data.permissions.includes(def.id);
+                            return (
+                                <label key={def.id} className="flex items-start gap-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={pending === def.id}
+                                        onChange={(e) => togglePermission(def.id, e.target.checked)}
+                                        className="mt-1"
+                                    />
+                                    <div>
+                                        <div className="text-sm font-medium text-white">{def.label}</div>
+                                        <div className="text-xs text-neutral-500">{def.description}</div>
+                                    </div>
+                                </label>
+                            );
+                        })}
+                    </div>
+
+                    {reserved.length > 0 && (
+                        <>
+                            <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-neutral-600">
+                                Reserved (coming soon)
+                            </h2>
+                            <div className="mb-6 flex flex-col gap-2 rounded-lg border border-border bg-surface p-4 opacity-50">
+                                {reserved.map((def) => (
+                                    <label key={def.id} className="flex items-start gap-3">
+                                        <input type="checkbox" checked={false} disabled className="mt-1" />
+                                        <div>
+                                            <div className="text-sm font-medium text-white">{def.label}</div>
+                                            <div className="text-xs text-neutral-500">{def.description}</div>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </>
+                    )}
+
+                    <h2 className="mt-8 mb-2 text-sm font-medium uppercase tracking-wide text-neutral-500">
+                        Members
+                    </h2>
+                    <p className="mb-3 text-xs text-neutral-500">
+                        This group has its own Discord role — adding or removing a member here assigns or removes
+                        that role, so you can also manage membership directly from Discord's role settings.
+                    </p>
+                    {data.discordUsers.length === 0 ? (
+                        <EmptyState>No members assigned yet.</EmptyState>
+                    ) : (
+                        <div className="mb-3 flex flex-col gap-2">
+                            {data.discordUsers.map((u) => (
+                                <div
+                                    key={u.userId}
+                                    className="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-2"
+                                >
+                                    <span className="text-sm text-white">{u.displayName}</span>
+                                    <button
+                                        onClick={() => removeMember(u.userId)}
+                                        disabled={pending === u.userId}
+                                        className="text-xs text-neutral-500 transition-colors hover:text-red-400 disabled:opacity-50"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <div className="mt-3 rounded-lg border border-border bg-surface p-4">
+                        {assignableMembers === null ? (
+                            <p className="text-xs text-neutral-500">Loading server members...</p>
+                        ) : assignableMembers.length === 0 ? (
+                            <p className="text-xs text-neutral-500">No more members available to add.</p>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <select
+                                    value={selectedUserId}
+                                    onChange={(e) => setSelectedUserId(e.target.value)}
+                                    disabled={pending === "add-member"}
+                                    className="flex-1 rounded-md border border-border bg-canvas px-3 py-1.5 text-sm text-white focus:border-accent focus:outline-none disabled:opacity-50"
+                                >
+                                    <option value="">Select a user to add…</option>
+                                    {assignableMembers.map((u) => (
+                                        <option key={u.userId} value={u.userId}>
+                                            {u.displayName}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={addMember}
+                                    disabled={pending === "add-member" || !selectedUserId}
+                                    className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-black transition-colors hover:bg-accent-hover disabled:opacity-50"
+                                >
+                                    {pending === "add-member" ? "Adding…" : "Add"}
+                                </button>
+                            </div>
+                        )}
+                        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
