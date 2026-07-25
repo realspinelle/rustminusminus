@@ -31,13 +31,13 @@ export class PermissionGroupClass extends Document<Types.ObjectId> {
 
     async addMember(discordUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
         const discordGuild = this.getDiscordGuild();
-        if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
-        return grantRole(discordGuild, this.roleId, discordUserId, "ManageRoles", "This bot doesnt have Manage Roles permission");
+        if (!discordGuild) return { ok: false, error: "Can't find the Discord server" };
+        return grantRole(discordGuild, this.roleId, discordUserId, "ManageRoles", "This bot doesn't have Manage Roles permission");
     }
 
     async removeMember(discordUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
         const discordGuild = this.getDiscordGuild();
-        if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
+        if (!discordGuild) return { ok: false, error: "Can't find the Discord server" };
         return revokeRole(discordGuild, this.roleId, discordUserId);
     }
 

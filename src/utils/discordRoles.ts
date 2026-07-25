@@ -16,10 +16,10 @@ export async function grantRole(
 ): Promise<RoleActionResult> {
     const member = discordGuild.members.cache.get(discordUserId)
         ?? await discordGuild.members.fetch(discordUserId).catch(() => null);
-    if (!member) return { ok: false, error: "Cant find that user in the server" };
+    if (!member) return { ok: false, error: "Can't find that user in the server" };
     if (member.roles.cache.has(roleId)) return { ok: true };
     const botMember = discordGuild.members.me;
-    if (!botMember) return { ok: false, error: "Cant find the bot in the server" };
+    if (!botMember) return { ok: false, error: "Can't find the bot in the server" };
     if (!botMember.permissions.has(requiredPermission)) return { ok: false, error: noPermissionError };
     if (botMember.roles.highest.position <= member.roles.highest.position) {
         return { ok: false, error: "Make the bot role the highest on the server or manually assign the role" };
@@ -32,7 +32,7 @@ export async function grantRole(
 export async function revokeRole(discordGuild: Guild, roleId: string, discordUserId: string): Promise<RoleActionResult> {
     const member = discordGuild.members.cache.get(discordUserId)
         ?? await discordGuild.members.fetch(discordUserId).catch(() => null);
-    if (!member) return { ok: false, error: "Cant find that user in the server" };
+    if (!member) return { ok: false, error: "Can't find that user in the server" };
     if (member.roles.cache.has(roleId)) await member.roles.remove(roleId);
     return { ok: true };
 }

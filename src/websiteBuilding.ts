@@ -83,7 +83,7 @@ export default async function websiteBuilding() {
             if (debounce) clearTimeout(debounce);
             debounce = setTimeout(() => {
                 buildPromise = null;
-                WebServer.websockets.forEach(ws => ws.send("lolilol"));
+                WebServer.websockets.forEach(ws => ws.send("reload"));
             }, 150);
         });
     }

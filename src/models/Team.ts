@@ -171,11 +171,11 @@ export class TeamClass extends Document<Types.ObjectId> {
 
     async connectRustPlus() {
         let user = await this.getActiveCredentialUser();
-        if (!user) return console.log("cant find user");
+        if (!user) return console.log("connectRustPlus: no active credential user");
         let cred = await this.getActiveServerCredential();
-        if (!cred) return console.log("cant find cred");
+        if (!cred) return console.log("connectRustPlus: no credential for the active server");
         let server = await this.getActiveServer();
-        if (!server) return console.log("cant find server");
+        if (!server) return console.log("connectRustPlus: active server not found");
         await connectTeam(this, server.ip, server.port, user.credentials.steam_id, cred.playerToken);
     }
     async getGuild() {
@@ -187,8 +187,8 @@ export class TeamClass extends Document<Types.ObjectId> {
         if (!userDb) return { ok: false, error: "This user hasn't linked their account" };
         if (this.users.some(id => id.equals(userDb._id))) return { ok: false, error: "This user is already in this team" };
         const discordGuild = (await this.getGuild())?.getDiscordGuild();
-        if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
-        const result = await grantRole(discordGuild, this.discord.roleId, discordUserId, "Administrator", "This bot doesnt have administrator permissions");
+        if (!discordGuild) return { ok: false, error: "Can't find the Discord server" };
+        const result = await grantRole(discordGuild, this.discord.roleId, discordUserId, "Administrator", "This bot doesn't have Administrator permissions");
         if (!result.ok) return result;
         this.users.push(userDb._id);
         await this.save();
@@ -203,7 +203,7 @@ export class TeamClass extends Document<Types.ObjectId> {
             return { ok: false, error: "Change the active credential before removing this user from the team" };
         }
         const discordGuild = (await this.getGuild())?.getDiscordGuild();
-        if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
+        if (!discordGuild) return { ok: false, error: "Can't find the Discord server" };
         const result = await revokeRole(discordGuild, this.discord.roleId, discordUserId);
         if (!result.ok) return result;
         this.users = this.users.filter(id => !id.equals(userDb._id));
