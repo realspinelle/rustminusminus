@@ -7,6 +7,7 @@ import { Lightbox } from "../components/Lightbox";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 import { StatTile, statIconClass } from "../components/StatTile";
 import { SectionCard } from "../components/SectionCard";
+import { InlineRename } from "../components/InlineRename";
 import type { ServerDetailResponse, ServerSnapshot, StorageEntity } from "./serverDetail.types";
 import { relativeTime, upkeepRemaining, upkeepTier, upkeepTierClass } from "./serverDetail.utils";
 
@@ -51,11 +52,21 @@ export function Component() {
         revalidator.revalidate();
     };
 
+    const renameDevice = async (kind: "smartSwitch" | "smartAlarm" | "storageMonitor", entityId: string, name: string) => {
+        await fetch(`/api/guilds/${guildId}/teams/${teamId}/servers/${serverId}/entities/${entityId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kind, name }),
+        });
+        revalidator.revalidate();
+    };
+
     if (!guildId || !teamId || !serverId) return null;
 
     const live = data.live ?? pingedLive;
     const cupboards = live?.storage.filter((s): s is Extract<StorageEntity, { kind: "cupboard" }> => s.kind === "cupboard") ?? [];
     const storageBoxes = live?.storage.filter((s): s is Extract<StorageEntity, { kind: "storage" }> => s.kind === "storage") ?? [];
+    const hasModule = (moduleId: string) => data.enabledModules.includes(moduleId);
 
     return (
         <div className="space-y-6">
@@ -156,12 +167,12 @@ export function Component() {
                         />
                     </div>
 
-                    {live.switches.length > 0 && (
+                    {hasModule("smart-switches") && live.switches.length > 0 && (
                         <SectionCard icon={<Zap className="h-4 w-4" />} title="Switches" count={live.switches.length}>
                             <div className="grid divide-y divide-border/60 sm:grid-cols-2 sm:divide-y-0 sm:divide-x sm:[&>*:nth-child(n+3)]:border-t sm:[&>*:nth-child(n+3)]:border-border/60">
                                 {live.switches.map(sw => (
                                     <div key={sw.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                                        <span className="truncate font-mono text-xs text-neutral-400">{sw.id}</span>
+                                        <InlineRename name={sw.name} subtitle={sw.id} onRename={name => renameDevice("smartSwitch", sw.id, name)} />
                                         <div className="flex shrink-0 items-center gap-2.5">
                                             <span className={`text-xs font-medium ${sw.value ? "text-accent" : "text-neutral-600"}`}>
                                                 {sw.value ? "On" : "Off"}
@@ -179,7 +190,7 @@ export function Component() {
                         </SectionCard>
                     )}
 
-                    {live.alarms.length > 0 && (
+                    {hasModule("smart-alarms") && live.alarms.length > 0 && (
                         <SectionCard icon={<Bell className="h-4 w-4" />} title="Alarms" count={live.alarms.length}>
                             <div className="divide-y divide-border/60">
                                 {live.alarms.map(alarm => {
@@ -188,7 +199,7 @@ export function Component() {
                                         <div key={alarm.id} className="flex items-center justify-between px-4 py-3">
                                             <div className="flex items-center gap-2.5">
                                                 <span className={`h-2 w-2 rounded-full ${recent ? "animate-pulse bg-red-500" : "bg-neutral-700"}`} />
-                                                <span className="font-mono text-xs text-neutral-400">{alarm.id}</span>
+                                                <InlineRename name={alarm.name} subtitle={alarm.id} onRename={name => renameDevice("smartAlarm", alarm.id, name)} />
                                             </div>
                                             <span className="text-xs text-neutral-500">Last triggered: {relativeTime(alarm.lastTriggered)}</span>
                                         </div>
@@ -198,12 +209,12 @@ export function Component() {
                         </SectionCard>
                     )}
 
-                    {cupboards.length > 0 && (
+                    {hasModule("storage-monitors") && cupboards.length > 0 && (
                         <SectionCard icon={<Shield className="h-4 w-4" />} title="Tool cupboards" count={cupboards.length}>
                             <div className="divide-y divide-border/60">
                                 {cupboards.map(tc => (
                                     <div key={tc.id} className="flex items-center justify-between px-4 py-3">
-                                        <span className="font-mono text-xs text-neutral-400">{tc.id}</span>
+                                        <InlineRename name={tc.name} subtitle={tc.id} onRename={name => renameDevice("storageMonitor", tc.id, name)} />
                                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${upkeepTierClass[upkeepTier(tc.protectionExpiry)]}`}>
                                             {upkeepRemaining(tc.protectionExpiry)}
                                         </span>
@@ -213,7 +224,7 @@ export function Component() {
                         </SectionCard>
                     )}
 
-                    {storageBoxes.length > 0 && (
+                    {hasModule("storage-monitors") && storageBoxes.length > 0 && (
                         <SectionCard icon={<Box className="h-4 w-4" />} title="Storage" count={storageBoxes.length}>
                             <div className="flex flex-col gap-3 p-3">
                                 {storageBoxes.map(box => {
@@ -221,7 +232,7 @@ export function Component() {
                                     return (
                                         <div key={box.id} className="rounded-lg border border-border/60 bg-canvas/40 p-3">
                                             <div className="mb-1.5 flex items-center justify-between">
-                                                <span className="font-mono text-xs text-neutral-400">{box.id}</span>
+                                                <InlineRename name={box.name} subtitle={box.id} onRename={name => renameDevice("storageMonitor", box.id, name)} />
                                                 <span className="text-xs text-neutral-500">{box.items.length} / {box.capacity} slots</span>
                                             </div>
                                             <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-surface-hover">

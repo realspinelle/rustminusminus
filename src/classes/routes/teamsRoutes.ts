@@ -2,9 +2,12 @@ import Elysia from "elysia";
 import { Types } from "mongoose";
 import { getActiveRustplus } from "../../rustplus/connections";
 import { getServerMap, getServerSnapshot, invalidateServerSnapshot } from "../../rustplus/serverSnapshot";
+import type { PairedItemKind } from "../../rustplus/pairedItems";
 import { getTeamsList } from "../../server/dataAccess/teams";
 import { getTeamDetail, getAddableUsers } from "../../server/dataAccess/teamDetail";
 import { getServerDetail } from "../../server/dataAccess/serverDetail";
+import { renameDevice } from "../../server/dataAccess/deviceActions";
+import { requireTeamModuleAccess } from "../../server/dataAccess/shared";
 import { sessionPlugin } from "./session";
 import { resolveAdminGuild, resolveGuildTeam } from "./shared";
 
@@ -93,7 +96,13 @@ export const teamsRoutes = new Elysia({ name: "teamsRoutes" })
         return new Response(Buffer.from(mapResult), { headers: { "Content-Type": "image/jpeg" } });
     })
     .post("guilds/:guildId/teams/:teamId/servers/:serverId/entities/:entityId/toggle", async ({ params, body, cookieToken, set }) => {
-        const result = await resolveGuildTeam(cookieToken as string | undefined, params.guildId as string, params.teamId as string);
+        const result = await requireTeamModuleAccess(
+            cookieToken as string | undefined,
+            params.guildId as string,
+            params.teamId as string,
+            "smart-switches",
+            "switches.toggle",
+        );
         if (!result.ok) { set.status = result.status; return { error: result.error }; }
         const { team } = result.data;
         if (params.serverId !== team.activeServerId) {
@@ -105,5 +114,25 @@ export const teamsRoutes = new Elysia({ name: "teamsRoutes" })
         const { value } = body as { value: boolean };
         await conn.setEntityValue(Number(params.entityId), value);
         invalidateServerSnapshot(team._id, params.serverId as string);
+        return { ok: true };
+    })
+    .patch("guilds/:guildId/teams/:teamId/servers/:serverId/entities/:entityId", async ({ params, body, cookieToken, set }) => {
+        const { kind, name } = body as { kind: PairedItemKind; name?: string };
+        if (!["smartSwitch", "smartAlarm", "storageMonitor"].includes(kind)) {
+            set.status = 400;
+            return { error: "Invalid device kind" };
+        }
+        const trimmed = name?.trim();
+        if (!trimmed) { set.status = 400; return { error: "Name is required" }; }
+        const result = await renameDevice(
+            cookieToken as string | undefined,
+            params.guildId as string,
+            params.teamId as string,
+            params.serverId as string,
+            kind,
+            params.entityId as string,
+            trimmed,
+        );
+        if (!result.ok) { set.status = result.status; return { error: result.error }; }
         return { ok: true };
     });
