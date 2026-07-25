@@ -7,6 +7,7 @@ import { storageMonitors } from "./storage-monitors/index";
 import { chatRelay } from "./chat-relay/index";
 import { serverInfoPanel } from "./server-info-panel/index";
 import { mapEvents } from "./map-events/index";
+import { raidAlerts } from "./raid-alerts/index";
 import type { RustModule } from "./types";
 
 export const modules: RustModule[] = [
@@ -18,6 +19,7 @@ export const modules: RustModule[] = [
     chatRelay,
     serverInfoPanel,
     mapEvents,
+    raidAlerts,
 ];
 
 for (const mod of modules) {

@@ -42,8 +42,8 @@ export const PERMISSIONS: PermissionDefinition[] = [
     {
         id: "raidalerts.manage",
         label: "Manage raid alerts",
-        description: "Reserved — no raid-alerts module yet.",
-        status: "reserved",
+        description: "Configure the raid-alert proximity radius.",
+        status: "enforced",
     },
     {
         id: "storagemonitors.manage",
