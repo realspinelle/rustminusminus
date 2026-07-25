@@ -4,7 +4,7 @@ import { DiscordBot } from "../classes/DiscordBot";
 import { getRandomHexColor } from "../utils";
 import { disconnectTeam } from "../rustplus/connections";
 import { registry } from "../modules/ModuleRegistry";
-import { ChannelType, PermissionFlagsBits, Role, type ColorResolvable } from "discord.js";
+import { ChannelType, PermissionFlagsBits, Role } from "discord.js";
 const GuildSchema = new Schema({
     guildId: { type: String, required: true, unique: true },
     teams: [{ type: Schema.Types.ObjectId, ref: "Team" }],

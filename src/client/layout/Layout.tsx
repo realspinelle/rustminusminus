@@ -5,7 +5,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
         isActive ? "bg-surface text-white" : "text-neutral-400 hover:text-white"
     }`;
 
-export default () => {
+export default function Layout() {
     return (
         <div className="min-h-screen bg-canvas text-neutral-200">
             <header className="border-b border-border">

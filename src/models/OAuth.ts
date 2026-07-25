@@ -22,8 +22,8 @@ const DISCORD_CACHE_TTL_MS = 5 * 60_000;
 
 export class OauthClass extends Document<Types.ObjectId> {
     cookieId!: string;
-    userId?: String;
-    redirectTo?: String;
+    userId?: string;
+    redirectTo?: string;
     expiration?: Date;
     accessToken?: string;
 

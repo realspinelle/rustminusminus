@@ -99,7 +99,7 @@ export function Component() {
                     </div>
                     {submitting && (
                         <p className="mt-2 text-xs text-neutral-500">
-                            Provisioning the team's Discord role and channels, this can take a few seconds…
+                            Provisioning the team&apos;s Discord role and channels, this can take a few seconds…
                         </p>
                     )}
                     {error && <p className="mt-2 text-xs text-red-400">{error}</p>}

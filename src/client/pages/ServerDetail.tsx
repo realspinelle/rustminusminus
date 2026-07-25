@@ -173,7 +173,7 @@ export function Component() {
                 className="inline-flex items-center gap-1.5 text-sm text-neutral-500 transition-colors hover:text-white"
             >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                {data.name}'s team
+                {data.name}&apos;s team
             </Link>
 
             <div className="flex items-center gap-3 rounded-xl border border-border bg-surface p-3.5">
@@ -209,7 +209,7 @@ export function Component() {
                         <Plug className="h-4.5 w-4.5" />
                     </span>
                     <p className="flex-1 min-w-55 text-sm text-neutral-400">
-                        This isn't the team's active server, so live device state isn't loaded automatically.
+                        This isn&apos;t the team&apos;s active server, so live device state isn&apos;t loaded automatically.
                         Ping it to connect for a moment and fetch the current state (read-only — switches can
                         only be controlled on the active server).
                     </p>
