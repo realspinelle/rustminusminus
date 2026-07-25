@@ -5,119 +5,10 @@ import { GuildSubNav } from "../components/GuildSubNav";
 import { Toggle } from "../components/Toggle";
 import { Lightbox } from "../components/Lightbox";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
-
-interface SwitchState {
-    id: string;
-    value: boolean;
-}
-
-interface AlarmState {
-    id: string;
-    value: boolean;
-    lastTriggered: string | null;
-}
-
-type StorageEntity =
-    | { id: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
-    | {
-        id: string;
-        kind: "storage";
-        capacity: number;
-        items: { itemId: number; name: string; shortName: string; quantity: number; isBlueprint: boolean }[];
-    };
-
-interface ServerSnapshot {
-    players: number;
-    maxPlayers: number;
-    queuedPlayers: number;
-    mapName: string;
-    wipeTime: number;
-    switches: SwitchState[];
-    alarms: AlarmState[];
-    storage: StorageEntity[];
-}
-
-interface ServerDetailResponse {
-    serverId: string;
-    name: string;
-    img: string | null;
-    url: string | null;
-    ip: string | null;
-    port: string | null;
-    isActive: boolean;
-    pairedItems: { smartSwitch: string[]; smartAlarm: string[]; storageMonitor: string[] };
-    live: ServerSnapshot | null;
-    liveError: string | null;
-}
-
-function relativeTime(iso: string | null): string {
-    if (!iso) return "Never";
-    const diffMs = Date.now() - new Date(iso).getTime();
-    const minutes = Math.floor(diffMs / 60000);
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-}
-
-function upkeepRemaining(protectionExpiry: number | null): string {
-    if (protectionExpiry == null) return "Unknown";
-    const remainingMs = protectionExpiry * 1000 - Date.now();
-    if (remainingMs <= 0) return "Expired";
-    const hours = Math.floor(remainingMs / 3_600_000);
-    const days = Math.floor(hours / 24);
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    return `${hours}h ${Math.floor((remainingMs % 3_600_000) / 60_000)}m`;
-}
-
-function upkeepTier(protectionExpiry: number | null): "unknown" | "expired" | "warning" | "safe" {
-    if (protectionExpiry == null) return "unknown";
-    const remainingMs = protectionExpiry * 1000 - Date.now();
-    if (remainingMs <= 0) return "expired";
-    if (remainingMs < 6 * 3_600_000) return "warning";
-    return "safe";
-}
-
-const upkeepTierClass: Record<ReturnType<typeof upkeepTier>, string> = {
-    unknown: "bg-surface-hover text-neutral-400",
-    expired: "bg-red-500/10 text-red-400",
-    warning: "bg-amber-500/10 text-amber-400",
-    safe: "bg-emerald-500/10 text-emerald-400",
-};
-
-const StatTile = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) => (
-    <div className="flex min-w-32 flex-1 items-center gap-3 px-4 py-3.5">
-        {icon}
-        <div className="min-w-0">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">{label}</div>
-            <div className="truncate text-base font-semibold text-white">{value}</div>
-        </div>
-    </div>
-);
-
-const statIconClass = "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent";
-
-const SectionCard = ({
-    icon,
-    title,
-    count,
-    children,
-}: {
-    icon: React.ReactNode;
-    title: string;
-    count: number;
-    children: React.ReactNode;
-}) => (
-    <section className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
-            <span className="text-neutral-500">{icon}</span>
-            <h2 className="text-sm font-medium text-white">{title}</h2>
-            <span className="ml-auto rounded-full bg-surface-hover px-2 py-0.5 text-xs text-neutral-500">{count}</span>
-        </div>
-        {children}
-    </section>
-);
+import { StatTile, statIconClass } from "../components/StatTile";
+import { SectionCard } from "../components/SectionCard";
+import type { ServerDetailResponse, ServerSnapshot, StorageEntity } from "./serverDetail.types";
+import { relativeTime, upkeepRemaining, upkeepTier, upkeepTierClass } from "./serverDetail.utils";
 
 export async function loader({ params }: LoaderFunctionArgs): Promise<ServerDetailResponse> {
     const { guildId, teamId, serverId } = params;
@@ -163,6 +54,8 @@ export function Component() {
     if (!guildId || !teamId || !serverId) return null;
 
     const live = data.live ?? pingedLive;
+    const cupboards = live?.storage.filter((s): s is Extract<StorageEntity, { kind: "cupboard" }> => s.kind === "cupboard") ?? [];
+    const storageBoxes = live?.storage.filter((s): s is Extract<StorageEntity, { kind: "storage" }> => s.kind === "storage") ?? [];
 
     return (
         <div className="space-y-6">
@@ -305,14 +198,10 @@ export function Component() {
                         </SectionCard>
                     )}
 
-                    {live.storage.filter(s => s.kind === "cupboard").length > 0 && (
-                        <SectionCard
-                            icon={<Shield className="h-4 w-4" />}
-                            title="Tool cupboards"
-                            count={live.storage.filter(s => s.kind === "cupboard").length}
-                        >
+                    {cupboards.length > 0 && (
+                        <SectionCard icon={<Shield className="h-4 w-4" />} title="Tool cupboards" count={cupboards.length}>
                             <div className="divide-y divide-border/60">
-                                {live.storage.filter((s): s is Extract<StorageEntity, { kind: "cupboard" }> => s.kind === "cupboard").map(tc => (
+                                {cupboards.map(tc => (
                                     <div key={tc.id} className="flex items-center justify-between px-4 py-3">
                                         <span className="font-mono text-xs text-neutral-400">{tc.id}</span>
                                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${upkeepTierClass[upkeepTier(tc.protectionExpiry)]}`}>
@@ -324,14 +213,10 @@ export function Component() {
                         </SectionCard>
                     )}
 
-                    {live.storage.filter(s => s.kind === "storage").length > 0 && (
-                        <SectionCard
-                            icon={<Box className="h-4 w-4" />}
-                            title="Storage"
-                            count={live.storage.filter(s => s.kind === "storage").length}
-                        >
+                    {storageBoxes.length > 0 && (
+                        <SectionCard icon={<Box className="h-4 w-4" />} title="Storage" count={storageBoxes.length}>
                             <div className="flex flex-col gap-3 p-3">
-                                {live.storage.filter((s): s is Extract<StorageEntity, { kind: "storage" }> => s.kind === "storage").map(box => {
+                                {storageBoxes.map(box => {
                                     const pct = box.capacity > 0 ? Math.min(100, (box.items.length / box.capacity) * 100) : 0;
                                     return (
                                         <div key={box.id} className="rounded-lg border border-border/60 bg-canvas/40 p-3">
