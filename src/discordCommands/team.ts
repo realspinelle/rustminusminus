@@ -1,7 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import type { CommandType } from "../types/DiscordCommandType";
 import { GuildModel } from "../models/Guild";
-import { UserModel } from "../models/User";
 
 export default {
     //TODO check permissions
@@ -88,21 +87,8 @@ export default {
             if (!guildDb) return await interaction.editReply({ content: "Cant find your guild in database !" });
             let teamDb = await guildDb.findTeamByName(name);
             if (!teamDb) return await interaction.editReply({ content: "Cant find the team" });
-            let userDb = await UserModel.findOne({ userId: user.id });
-            if (!userDb) return await interaction.editReply({ content: "This user didnt link his account" });
-            if (!teamDb.users.includes(userDb._id)) return await interaction.editReply({ content: "This user is not in this team" });
-            if (teamDb.activeCredentialUserId == userDb._id) return await interaction.editReply({ content: "Change the active credential before removing this user from the team" });
-            let member = guildDb.getDiscordGuild()?.members.cache.get(user.id);
-            if (!member) return await interaction.editReply({ content: "Cant find that user in the server" });
-            if (member.roles.cache.has(teamDb.discord.roleId)) {
-                let botMember = guildDb.getDiscordGuild()?.members.cache.get(user.id);
-                if (!botMember) return await interaction.editReply({ content: "Cant find the bot in the server" });
-                if (!botMember.permissions.has('Administrator')) return await interaction.editReply({ content: "This bot doesnt have administator permissions" });
-                if (member.roles.highest.position <= member.roles.highest.position) return await interaction.editReply({ content: "Make the bot role the highest on the server" });
-                await member.roles.remove(teamDb.discord.roleId);
-            }
-            teamDb.users = teamDb.users.filter(e => e != e._id);
-            await teamDb.save();
+            let result = await teamDb.removeMember(user.id);
+            if (!result.ok) return await interaction.editReply({ content: result.error });
             await interaction.editReply({ content: "Done." });
         }
     },

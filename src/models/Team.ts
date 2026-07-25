@@ -4,7 +4,7 @@ import { ServerModel } from "./Server";
 import { connectTeam, disconnectTeam, getActiveRustplus } from "../rustplus/connections";
 import { GuildModel } from "./Guild";
 import { registry } from "../modules/ModuleRegistry";
-import { grantRole } from "../utils/discordRoles";
+import { grantRole, revokeRole } from "../utils/discordRoles";
 
 const ServerSchema = {
     serverId: { type: String, required: true },
@@ -191,6 +191,22 @@ export class TeamClass extends Document<Types.ObjectId> {
         const result = await grantRole(discordGuild, this.discord.roleId, discordUserId, "Administrator", "This bot doesnt have administrator permissions");
         if (!result.ok) return result;
         this.users.push(userDb._id);
+        await this.save();
+        return { ok: true };
+    }
+
+    async removeMember(discordUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+        const userDb = await UserModel.findOne({ userId: discordUserId });
+        if (!userDb) return { ok: false, error: "This user hasn't linked their account" };
+        if (!this.users.some(id => id.equals(userDb._id))) return { ok: false, error: "This user is not in this team" };
+        if (this.activeCredentialUserId?.equals(userDb._id)) {
+            return { ok: false, error: "Change the active credential before removing this user from the team" };
+        }
+        const discordGuild = (await this.getGuild())?.getDiscordGuild();
+        if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
+        const result = await revokeRole(discordGuild, this.discord.roleId, discordUserId);
+        if (!result.ok) return result;
+        this.users = this.users.filter(id => !id.equals(userDb._id));
         await this.save();
         return { ok: true };
     }
