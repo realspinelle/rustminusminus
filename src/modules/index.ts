@@ -5,9 +5,20 @@ import { smartSwitches } from "./smart-switches/index";
 import { smartAlarms } from "./smart-alarms/index";
 import { storageMonitors } from "./storage-monitors/index";
 import { chatRelay } from "./chat-relay/index";
+import { serverInfoPanel } from "./server-info-panel/index";
+import { mapEvents } from "./map-events/index";
 import type { RustModule } from "./types";
 
-export const modules: RustModule[] = [crossTeamChat, teamTracker, smartSwitches, smartAlarms, storageMonitors, chatRelay];
+export const modules: RustModule[] = [
+    crossTeamChat,
+    teamTracker,
+    smartSwitches,
+    smartAlarms,
+    storageMonitors,
+    chatRelay,
+    serverInfoPanel,
+    mapEvents,
+];
 
 for (const mod of modules) {
     registry.register(mod);
