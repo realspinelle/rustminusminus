@@ -194,11 +194,15 @@ export class TeamClass extends Document<Types.ObjectId> {
         await this.save();
         return { ok: true };
     }
-    /** Looks up one of this team's provisioned Discord channels by its `discord` sub-key. */
-    async getChannel(key: Exclude<keyof TeamClass["discord"], "roleId">) {
+    /**
+     * Looks up one of this team's provisioned text channels by its `discord` sub-key. Excludes
+     * "category" (a CategoryChannel, never text-based - fetch it directly via
+     * `guild.channels.cache.get(team.discord.category.id)` instead, as Guild.ts already does).
+     */
+    async getChannel(key: Exclude<keyof TeamClass["discord"], "roleId" | "category">) {
         let guild = (await this.getGuild())?.getDiscordGuild();
         let channel = guild?.channels.cache.get(this.discord[key].id);
-        if (channel?.isTextBased()) return null;
+        if (!channel?.isTextBased()) return null;
         return channel;
     }
     async getDiscordRole() {
