@@ -12,7 +12,7 @@ export const crossTeamChat: RustModule = {
     id: "cross-team-chat",
     name: "Cross-Team Chat",
     description: "Relay team chat between linked teams.",
-    scope: "team",
+    scope: "guild",
     defaultEnabled: false,
     discordCommands: [chatLinkCommand],
     async onTeamMessage({ rustplus, team, message }) {

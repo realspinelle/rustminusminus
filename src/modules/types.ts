@@ -58,6 +58,6 @@ export interface RustModule {
     onEntityChanged?(ctx: ModuleContext & { entityId: number; payload: AppEntityPayload }): void | Promise<void>;
 
     // ---- lifecycle (fired on toggle) ----
-    onEnable?(scope: { guildId: string; teamId?: string }): void | Promise<void>;
-    onDisable?(scope: { guildId: string; teamId?: string }): void | Promise<void>;
+    onEnable?(scope: { guildId?: string; teamId?: string }): void | Promise<void>;
+    onDisable?(scope: { guildId?: string; teamId?: string }): void | Promise<void>;
 }

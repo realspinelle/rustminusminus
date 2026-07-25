@@ -1,4 +1,4 @@
-import { Link, useLoaderData } from "react-router-dom";
+import { useLoaderData, useNavigate } from "react-router-dom";
 import { EmptyState, Table, Tbody, Td, Th, Thead, Tr } from "../components/Table";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
@@ -16,6 +16,7 @@ export async function loader(): Promise<GuildSummary[]> {
 
 export function Component() {
     const guilds = useLoaderData() as GuildSummary[];
+    const navigate = useNavigate();
 
     return (
         <div className="flex flex-col gap-4">
@@ -27,21 +28,12 @@ export function Component() {
                     <Thead>
                         <Th>Guild</Th>
                         <Th>Guild ID</Th>
-                        <Th className="text-right">Actions</Th>
                     </Thead>
                     <Tbody>
                         {guilds.map((guild) => (
-                            <Tr key={guild.guildId}>
+                            <Tr key={guild.guildId} onClick={() => navigate(`/guild/${guild.guildId}/modules`)}>
                                 <Td className="font-medium text-white">{guild.name}</Td>
                                 <Td className="font-mono text-xs text-neutral-500">{guild.guildId}</Td>
-                                <Td className="text-right">
-                                    <Link
-                                        to={`/guild/${guild.guildId}/modules`}
-                                        className="rounded-md border border-border px-3 py-1 text-xs font-medium text-neutral-300 transition-colors hover:border-accent hover:text-accent"
-                                    >
-                                        Manage
-                                    </Link>
-                                </Td>
                             </Tr>
                         ))}
                     </Tbody>

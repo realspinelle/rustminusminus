@@ -2,21 +2,24 @@ import { GuildModel } from "../../models/Guild";
 import { registry } from "../../modules/ModuleRegistry";
 import { requirePermission } from "../../permissions/web";
 import { fail, ok } from "./shared";
+import { findGuildTeam } from "./shared";
 
-export async function getModulesData(cookieToken: string | undefined, guildId: string) {
+export async function getTeamModulesData(cookieToken: string | undefined, guildId: string, teamId: string) {
     if (!(await requirePermission(cookieToken, guildId, "modules.manage"))) {
         return fail(401, "Not authorized");
     }
     const guild = await GuildModel.findOne({ guildId });
     if (!guild) return fail(404, "Guild not found");
+    const team = await findGuildTeam(guild, teamId);
+    if (!team) return fail(404, "Team not found");
     const modules = registry.all()
-        .filter(mod => mod.scope === "guild")
+        .filter(mod => mod.scope === "team")
         .map(mod => ({
             id: mod.id,
             name: mod.name,
             description: mod.description,
             scope: mod.scope,
-            enabled: guild.isModuleEnabled(mod.id),
+            enabled: team.isModuleEnabled(mod.id),
         }));
-    return ok({ modules });
+    return ok({ teamId: team._id.toString(), teamName: team.name, modules });
 }

@@ -2,6 +2,7 @@ import type { AppEntityPayload, AppTeamInfo, AppTeamMessage, RustPlus, TeamDiffE
 import { DiscordBot } from "../classes/DiscordBot";
 import { GuildModel, type GuildClass } from "../models/Guild";
 import { TeamModel, type TeamClass } from "../models/Team";
+import { getBotSettings } from "../models/BotSettings";
 import type { ModuleDiscordCommand, RustModule } from "./types";
 
 interface ConnectionListeners {
@@ -26,6 +27,7 @@ interface ConnectionContext {
  */
 class ModuleRegistry {
     private modules = new Map<string, RustModule>();
+    private globalEnabled = new Map<string, boolean>(); // moduleId -> explicit global override
     private teamEnabled = new Map<string, Set<string>>(); // teamId.toString() -> enabled moduleIds (effective)
     private guildEnabled = new Map<string, Set<string>>(); // guildId (Discord guild id string) -> enabled moduleIds
     private connectionListeners = new Map<RustPlus, ConnectionListeners>();
@@ -43,13 +45,34 @@ class ModuleRegistry {
         return this.modules.get(id);
     }
 
-    /** Effective per-team enabled set: team override, else guild override, else module default. */
+    /** Load global module overrides from BotSettings into the in-memory cache. */
+    async primeGlobal(): Promise<void> {
+        const settings = await getBotSettings();
+        for (const entry of settings.modules) {
+            this.globalEnabled.set(entry.moduleId, entry.enabled);
+        }
+    }
+
+    /** Effective global enabled state: explicit override, else defaultEnabled. */
+    isEnabledGlobally(moduleId: string): boolean {
+        const override = this.globalEnabled.get(moduleId);
+        return override !== undefined ? override : (this.modules.get(moduleId)?.defaultEnabled ?? false);
+    }
+
+    /** Effective per-team enabled set: team override > guild override > global override > defaultEnabled. */
     private computeTeamEnabledSet(team: TeamClass, guild: GuildClass): Set<string> {
         const set = new Set<string>();
         for (const mod of this.all()) {
             const teamOverride = team.modules?.find((m) => m.moduleId === mod.id);
             const guildOverride = guild.modules?.find((m) => m.moduleId === mod.id);
-            const enabled = teamOverride ? teamOverride.enabled : guildOverride ? guildOverride.enabled : mod.defaultEnabled;
+            const globalOverride = this.globalEnabled.get(mod.id);
+            const enabled = teamOverride
+                ? teamOverride.enabled
+                : guildOverride
+                    ? guildOverride.enabled
+                    : globalOverride !== undefined
+                        ? globalOverride
+                        : mod.defaultEnabled;
             if (enabled) set.add(mod.id);
         }
         return set;
@@ -60,7 +83,12 @@ class ModuleRegistry {
         const set = new Set<string>();
         for (const mod of this.all()) {
             const guildOverride = guild.modules?.find((m) => m.moduleId === mod.id);
-            const enabled = guildOverride ? guildOverride.enabled : mod.defaultEnabled;
+            const globalOverride = this.globalEnabled.get(mod.id);
+            const enabled = guildOverride
+                ? guildOverride.enabled
+                : globalOverride !== undefined
+                    ? globalOverride
+                    : mod.defaultEnabled;
             if (enabled) set.add(mod.id);
         }
         return set;
@@ -182,9 +210,27 @@ class ModuleRegistry {
 
     /**
      * Persists a module's enabled state, refreshes the relevant cache(s), fires the module's
-     * onEnable/onDisable lifecycle hook, and re-syncs that guild's Discord slash commands live.
+     * onEnable/onDisable lifecycle hook, and (for guild/team scope) re-syncs that guild's Discord
+     * slash commands live.
+     *
+     * scope.guildId omitted = global scope (stored in BotSettings, updates globalEnabled cache).
      */
-    async setEnabled(moduleId: string, scope: { guildId: string; teamId?: string }, enabled: boolean): Promise<void> {
+    async setEnabled(moduleId: string, scope: { guildId?: string; teamId?: string }, enabled: boolean): Promise<void> {
+        if (!scope.guildId) {
+            // Global scope
+            const settings = await getBotSettings();
+            const existing = settings.modules?.find((m) => m.moduleId === moduleId);
+            if (existing) existing.enabled = enabled;
+            else settings.modules.push({ moduleId, enabled });
+            await settings.save();
+            this.globalEnabled.set(moduleId, enabled);
+
+            const mod = this.modules.get(moduleId);
+            if (enabled) await mod?.onEnable?.({});
+            else await mod?.onDisable?.({});
+            return;
+        }
+
         if (scope.teamId) {
             const team = await TeamModel.findById(scope.teamId);
             if (!team) return;

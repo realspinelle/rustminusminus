@@ -8,9 +8,11 @@ import { WebServer } from "./classes/WebServer";
 import websiteBuilding from "./websiteBuilding";
 import "./modules/index"; // registers all modules into the registry
 import { connectAll } from "./rustplus/connections";
+import { registry } from "./modules/ModuleRegistry";
 
 await downloadItemList();
 await mongoose.connect(Bun.env.MONGODB_URI);
+await registry.primeGlobal();
 
 await connectAll();
 

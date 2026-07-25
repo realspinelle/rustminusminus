@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useLoaderData, useRevalidator, type LoaderFunctionArgs } from "react-router-dom";
 import { GuildSubNav } from "../components/GuildSubNav";
+import { TeamSubNav } from "../components/TeamSubNav";
 import { EmptyState, Table, Tbody, Td, Th, Thead, Tr } from "../components/Table";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
@@ -125,7 +126,8 @@ export function Component() {
             <Link to={`/guild/${guildId}/teams`} className="text-sm text-neutral-500 hover:text-white">
                 ← Teams
             </Link>
-            <h1 className="mt-2 mb-6 text-2xl font-semibold text-white">{data.name}</h1>
+            <h1 className="mt-2 mb-2 text-2xl font-semibold text-white">{data.name}</h1>
+            <TeamSubNav guildId={guildId} teamId={teamId} />
             {actionError && <p className="mb-4 text-sm text-red-400">{actionError}</p>}
 
             <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-neutral-500">Members</h2>

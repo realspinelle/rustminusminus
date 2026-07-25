@@ -20,6 +20,11 @@ import { getTeamDetail, getAddableUsers } from "../server/dataAccess/teamDetail"
 import { getServerDetail } from "../server/dataAccess/serverDetail";
 import { getPermissionGroupsList } from "../server/dataAccess/permissionGroups";
 import { getPermissionGroupDetail, getPermissionDefinitions, getAssignableMembers } from "../server/dataAccess/permissionGroupDetail";
+import { getChatLinksList, createChatLink, deleteChatLink, addTeamToLink, removeTeamFromLink } from "../server/dataAccess/chatLinks";
+import { getGuildEnabledModules } from "../server/dataAccess/guildLayout";
+import { getGlobalModulesData } from "../server/dataAccess/globalModules";
+import { getTeamModulesData } from "../server/dataAccess/teamModules";
+import { requireBotOwner } from "../permissions/web";
 import { renderPage } from "../server/render";
 
 let REDIRECT_URI = Bun.env.PROTOCOL + "://" + Bun.env.HOST + ":" + Bun.env.PORT + "/callback"
@@ -111,8 +116,27 @@ export class WebServer extends Elysia {
                     .get("healthcheck", () => {
                         return { status: "ok" }
                     })
+                    .get("modules", async ({ cookieToken, set }) => {
+                        const result = await getGlobalModulesData(cookieToken as string | undefined);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
+                    })
+                    .patch("modules/:moduleId", async ({ params, body, cookieToken, set }) => {
+                        if (!(await requireBotOwner(cookieToken as string | undefined))) {
+                            set.status = 401;
+                            return { error: "Not authorized" };
+                        }
+                        const { enabled } = body as { enabled: boolean };
+                        await registry.setEnabled(params.moduleId, {}, enabled);
+                        return { ok: true };
+                    })
                     .get("guilds", async ({ cookieToken, set }) => {
                         const result = await getGuildsForUser(cookieToken as string | undefined);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
+                    })
+                    .get("guilds/:guildId/enabled-modules", async ({ params, cookieToken, set }) => {
+                        const result = await getGuildEnabledModules(cookieToken as string | undefined, params.guildId as string);
                         if (!result.ok) { set.status = result.status; return { error: result.error }; }
                         return result.data;
                     })
@@ -126,8 +150,22 @@ export class WebServer extends Elysia {
                             set.status = 401;
                             return { error: "Not authorized" };
                         }
-                        const { enabled, teamId } = body as { enabled: boolean; teamId?: string };
-                        await registry.setEnabled(params.moduleId, { guildId: params.guildId, teamId }, enabled);
+                        const { enabled } = body as { enabled: boolean };
+                        await registry.setEnabled(params.moduleId, { guildId: params.guildId }, enabled);
+                        return { ok: true };
+                    })
+                    .get("guilds/:guildId/teams/:teamId/modules", async ({ params, cookieToken, set }) => {
+                        const result = await getTeamModulesData(cookieToken as string | undefined, params.guildId as string, params.teamId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
+                    })
+                    .patch("guilds/:guildId/teams/:teamId/modules/:moduleId", async ({ params, body, cookieToken, set }) => {
+                        if (!(await requirePermission(cookieToken as string | undefined, params.guildId as string, "modules.manage"))) {
+                            set.status = 401;
+                            return { error: "Not authorized" };
+                        }
+                        const { enabled } = body as { enabled: boolean };
+                        await registry.setEnabled(params.moduleId, { guildId: params.guildId, teamId: params.teamId }, enabled);
                         return { ok: true };
                     })
                     .get("guilds/:guildId/teams", async ({ params, cookieToken, set }) => {
@@ -348,6 +386,35 @@ export class WebServer extends Elysia {
                         if (!group) { set.status = 404; return { error: "Permission group not found" }; }
                         const result = await group.removeMember(params.discordUserId as string);
                         if (!result.ok) { set.status = 400; return { error: result.error }; }
+                        return { ok: true };
+                    })
+                    .get("guilds/:guildId/chat-links", async ({ params, cookieToken, set }) => {
+                        const result = await getChatLinksList(cookieToken as string | undefined, params.guildId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
+                    })
+                    .post("guilds/:guildId/chat-links", async ({ params, body, cookieToken, set }) => {
+                        const name = (body as { name?: string }).name?.trim();
+                        if (!name) { set.status = 400; return { error: "Group name is required" }; }
+                        const result = await createChatLink(cookieToken as string | undefined, params.guildId as string, name);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
+                    })
+                    .delete("guilds/:guildId/chat-links/:linkId", async ({ params, cookieToken, set }) => {
+                        const result = await deleteChatLink(cookieToken as string | undefined, params.guildId as string, params.linkId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return { ok: true };
+                    })
+                    .post("guilds/:guildId/chat-links/:linkId/teams", async ({ params, body, cookieToken, set }) => {
+                        const teamId = (body as { teamId?: string }).teamId;
+                        if (!teamId) { set.status = 400; return { error: "teamId is required" }; }
+                        const result = await addTeamToLink(cookieToken as string | undefined, params.guildId as string, params.linkId as string, teamId);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return { ok: true };
+                    })
+                    .delete("guilds/:guildId/chat-links/:linkId/teams/:teamId", async ({ params, cookieToken, set }) => {
+                        const result = await removeTeamFromLink(cookieToken as string | undefined, params.guildId as string, params.linkId as string, params.teamId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
                         return { ok: true };
                     })
             )

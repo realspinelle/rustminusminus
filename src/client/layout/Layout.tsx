@@ -20,6 +20,9 @@ export default () => {
                         <NavLink to="/guilds" className={navLinkClass}>
                             Guilds
                         </NavLink>
+                        <NavLink to="/modules" className={navLinkClass}>
+                            Modules
+                        </NavLink>
                     </nav>
                 </div>
             </header>

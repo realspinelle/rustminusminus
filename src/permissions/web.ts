@@ -4,6 +4,15 @@ import { OauthModel } from "../models/OAuth";
 import { resolveGroupPermissionsByRoles } from "./check";
 import type { PermissionId } from "./definitions";
 
+/** True if the logged-in user is the bot owner (matched by OWNER_DISCORD_ID env var). */
+export async function requireBotOwner(cookieToken: string | undefined): Promise<boolean> {
+    const ownerId = Bun.env.OWNER_DISCORD_ID;
+    if (!ownerId || !cookieToken) return false;
+    const auth = await OauthModel.findOne({ cookieId: cookieToken });
+    if (!auth?.userId) return false;
+    return auth.userId.toString() === ownerId;
+}
+
 /** True if the logged-in user (by cookie) has Discord's MANAGE_GUILD permission on guildId. */
 export async function requireGuildAdmin(cookieToken: string | undefined, guildId: string): Promise<boolean> {
     if (!cookieToken) return false;
