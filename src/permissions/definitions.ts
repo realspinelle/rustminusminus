@@ -28,8 +28,8 @@ export const PERMISSIONS: PermissionDefinition[] = [
     {
         id: "switches.toggle",
         label: "Toggle switches",
-        description: "Reserved — not yet enforced.",
-        status: "reserved",
+        description: "Toggle and rename paired smart switches.",
+        status: "enforced",
     },
     {
         id: "alarms.manage",
