@@ -8,12 +8,29 @@ pass (see the architecture plan this came from for full context on why these wer
 - Raid cost configuration UI (explosive/tool costs to raid different structure tiers).
 
 ## Feature parity with rustplusplus
-- Port the rest of rustplusplus's ~24 commands (smart switches, alarms, storage monitors,
-  markers, etc.) as individual modules on top of the new module system, replacing the old
-  monolithic if/else command handlers entirely.
-- Once switches/alarms/raid-alerts exist as real modules, enforce the corresponding
-  `switches.toggle`/`alarms.manage`/`raidalerts.manage` permissions (defined but reserved/unused
-  in `src/permissions/definitions.ts` today) against them.
+Done, as individual modules on the module system (see `src/modules/`): `team-tracker`,
+`smart-switches`, `smart-alarms`, `storage-monitors`, `chat-relay`, `server-info-panel`,
+`map-events`, `raid-alerts`, `vending-search`. All previously-reserved permissions
+(`switches.toggle`, `alarms.manage`, `raidalerts.manage`) plus two new ones
+(`storagemonitors.manage`, `raidalerts.manage`'s config command) are now enforced by their
+modules in `src/permissions/definitions.ts`. Deliberately excluded: anything BattleMetrics-based
+(cross-server player search/tracking, offline population), in-game team-leader change (fragile
+undocumented workaround upstream, and `rustminus`'s `promoteToLeader` only covers clan chat),
+and voice/TTS relay (no voice infra in this bot, `chat-relay` already covers it textually).
+
+Still open:
+- **`calculators` module** (`/recycle`, `/craft`, `/decay`) — needs rustplusplus's curated
+  recycler-yield/crafting-cost/decay-hours datasets (`recyclerData.json`/`craftData.json`/
+  `decayData.json` equivalents). This repo's `items.json` (gitignored, deployer-supplied) only
+  carries `Id`/`DisplayName`/`ShortName` — no balance data — so this needs sourcing/porting real
+  data rather than guessing numbers.
+- **`camera-preview` module** (`/camera <id>`, CCTV/PTZ) — flagged as a stretch goal in the
+  parity plan; ray decoding + PTZ input + subscription lifecycle is significantly more complex
+  than every other module for comparatively niche value. Build only if there's real demand.
+- **Smart-device grouping** (control multiple switches as one named group) — deferred out of
+  `smart-switches` v1 to ship the base module faster.
+- **Discord button-based device toggles** — `smart-switches`/`smart-alarms`/`storage-monitors`
+  use slash-command subcommands only; `DiscordBot.ts` has no component-interaction handling yet.
 
 ## Cross-team-chat follow-ups
 - Link-group management UI in `Modules.tsx` (currently only enable/disable per team; creating
