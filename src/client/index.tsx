@@ -1,15 +1,19 @@
 import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App.tsx";
-import { NODE_ENV } from "./const.ts";
-import dev from "./dev.ts";
+import { hydrateRoot } from "react-dom/client";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { routes } from "./router";
+import { NODE_ENV } from "./const";
+import dev from "./dev";
 
 if (NODE_ENV == "development") {
     dev();
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+const router = createBrowserRouter(routes);
+
+hydrateRoot(
+    document.getElementById("root")!,
     <React.StrictMode>
-        <App />
+        <RouterProvider router={router} />
     </React.StrictMode>
 );

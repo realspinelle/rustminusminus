@@ -1,29 +1,29 @@
 import staticPlugin from "@elysiajs/static";
 import Elysia from "elysia";
-import fs from "fs/promises";
 import { DiscordBot } from "./DiscordBot";
 import axios from "axios";
-import { PermissionFlagsBits } from "discord.js";
 import { Types } from "mongoose";
 import { OauthClass, OauthModel } from "../models/OAuth";
 import { GuildModel, type GuildClass } from "../models/Guild";
-import { ServerModel } from "../models/Server";
-import { UserModel } from "../models/User";
-import { TeamModel } from "../models/Team";
 import { PermissionGroupModel, createPermissionGroup } from "../models/PermissionGroup";
 import { registry } from "../modules/ModuleRegistry";
 import { getActiveRustplus } from "../rustplus/connections";
-import { getServerMap, getServerSnapshot } from "../rustplus/serverSnapshot";
+import { getServerMap, getServerSnapshot, invalidateServerSnapshot } from "../rustplus/serverSnapshot";
 import { requireGuildAdmin, requirePermission } from "../permissions/web";
 import { PERMISSIONS } from "../permissions/definitions";
 import type { PermissionId } from "../permissions/definitions";
+import { findGuildTeam } from "../server/dataAccess/shared";
+import { getGuildsForUser } from "../server/dataAccess/guilds";
+import { getModulesData } from "../server/dataAccess/modules";
+import { getTeamsList } from "../server/dataAccess/teams";
+import { getTeamDetail, getAddableUsers } from "../server/dataAccess/teamDetail";
+import { getServerDetail } from "../server/dataAccess/serverDetail";
+import { getPermissionGroupsList } from "../server/dataAccess/permissionGroups";
+import { getPermissionGroupDetail, getPermissionDefinitions, getAssignableMembers } from "../server/dataAccess/permissionGroupDetail";
+import { renderPage } from "../server/render";
 
 let REDIRECT_URI = Bun.env.PROTOCOL + "://" + Bun.env.HOST + ":" + Bun.env.PORT + "/callback"
 
-/** Finds a team by id, scoped to the given guild so a teamId from another guild can't be used. */
-async function findGuildTeam(guild: GuildClass, teamId: string) {
-    return (await guild.getTeams()).find(t => t._id.toString() === teamId) ?? null;
-}
 export class WebServer extends Elysia {
     static websockets: any[] = []; // fck elysia types
     constructor() {
@@ -42,9 +42,19 @@ export class WebServer extends Elysia {
         this
             .use(staticPlugin({}))
             .onRequest(async ({ set, request }) => {
-                set.headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-                set.headers["Pragma"] = "no-cache";
-                set.headers["Expires"] = 0;
+                const { pathname } = new URL(request.url);
+                if (pathname.startsWith("/public/js/") || pathname.startsWith("/public/css/")) {
+                    // these URLs are version-stamped (see websiteBuilding.ts's getAssetVersion) - in dev
+                    // the version changes on every request so no-store is still correct, in prod it only
+                    // changes on an actual rebuild so the response itself can be cached indefinitely
+                    set.headers["Cache-Control"] = Bun.env.NODE_ENV == "development"
+                        ? "no-cache, no-store, must-revalidate"
+                        : "public, max-age=31536000, immutable";
+                } else {
+                    set.headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+                    set.headers["Pragma"] = "no-cache";
+                    set.headers["Expires"] = 0;
+                }
                 if (request.method === "OPTIONS") {
                     set.status = 204;
                     return "";
@@ -92,13 +102,9 @@ export class WebServer extends Elysia {
                 if (await auth.getUser() == null) return { loggedIn: false };
                 return { loggedIn: true };
             })
-            .get("*", async ({ redirect, loggedIn }) => {
+            .get("*", async ({ redirect, loggedIn, cookieToken, request }) => {
                 if (!loggedIn) return redirect("/login");
-                return new Response(await fs.readFile("./public/index.html"), {
-                    headers: {
-                        "Content-Type": "text/html"
-                    }
-                });
+                return await renderPage(request, cookieToken as string | undefined);
             })
             .group("api", e =>
                 e
@@ -106,60 +112,14 @@ export class WebServer extends Elysia {
                         return { status: "ok" }
                     })
                     .get("guilds", async ({ cookieToken, set }) => {
-                        const auth = await OauthModel.findOne({ cookieId: cookieToken });
-                        if (!auth) { set.status = 401; return { error: "Not logged in" }; }
-                        const discordGuilds = await auth.getGuilds();
-                        if (!discordGuilds) { set.status = 401; return { error: "Cant fetch guilds" }; }
-                        const managed = discordGuilds.filter(g => {
-                            if (!g.permissions) return false;
-                            return (BigInt(g.permissions) & BigInt(PermissionFlagsBits.ManageGuild)) === BigInt(PermissionFlagsBits.ManageGuild);
-                        });
-                        const guildIds = new Set(managed.map(g => g.id));
-                        if (auth.userId) {
-                            const discordUserId = auth.userId.toString();
-                            // guilds where this user holds a Discord role linked to a permission group
-                            const otherGroups = await PermissionGroupModel.find({ guildId: { $nin: [...guildIds] } });
-                            for (const g of otherGroups) {
-                                if (guildIds.has(g.guildId)) continue;
-                                const member = DiscordBot.Instance.guilds.cache.get(g.guildId)?.members.cache.get(discordUserId);
-                                if (member?.roles.cache.has(g.roleId)) guildIds.add(g.guildId);
-                            }
-                            // guilds where this user is simply a member of a team - no permission needed to see the guild
-                            const userDb = await UserModel.findOne({ userId: discordUserId });
-                            if (userDb) {
-                                const teams = await TeamModel.find({ users: userDb._id });
-                                const teamIds = teams.map(t => t._id);
-                                const teamGuilds = await GuildModel.find({ teams: { $in: teamIds } });
-                                for (const g of teamGuilds) guildIds.add(g.guildId);
-                            }
-                        }
-                        const dbGuilds = await GuildModel.find({ guildId: { $in: [...guildIds] } });
-                        return dbGuilds.map(g => ({
-                            guildId: g.guildId,
-                            name: discordGuilds.find(m => m.id === g.guildId)?.name ?? g.guildId
-                        }));
+                        const result = await getGuildsForUser(cookieToken as string | undefined);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .get("guilds/:guildId/modules", async ({ params, cookieToken, set }) => {
-                        if (!(await requirePermission(cookieToken as string | undefined, params.guildId as string, "modules.manage"))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const guild = await GuildModel.findOne({ guildId: params.guildId });
-                        if (!guild) { set.status = 404; return { error: "Guild not found" }; }
-                        const teams = await guild.getTeams();
-                        const modules = registry.all().map(mod => ({
-                            id: mod.id,
-                            name: mod.name,
-                            description: mod.description,
-                            scope: mod.scope,
-                            guildEnabled: guild.isModuleEnabled(mod.id),
-                            teamEnabled: Object.fromEntries(teams.map(t => [t._id.toString(), t.isModuleEnabled(mod.id)])),
-                            settingsSchema: mod.settingsSchema ?? [],
-                        }));
-                        return {
-                            teams: teams.map(t => ({ id: t._id.toString(), name: t.name })),
-                            modules,
-                        };
+                        const result = await getModulesData(cookieToken as string | undefined, params.guildId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .patch("guilds/:guildId/modules/:moduleId", async ({ params, body, cookieToken, set }) => {
                         if (!(await requirePermission(cookieToken as string | undefined, params.guildId as string, "modules.manage"))) {
@@ -171,56 +131,14 @@ export class WebServer extends Elysia {
                         return { ok: true };
                     })
                     .get("guilds/:guildId/teams", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const guild = await GuildModel.findOne({ guildId: params.guildId });
-                        if (!guild) { set.status = 404; return { error: "Guild not found" }; }
-                        const teams = await guild.getTeams();
-                        return await Promise.all(teams.map(async t => {
-                            const activeServer = t.activeServerId ? await ServerModel.findOne({ serverId: t.activeServerId }) : null;
-                            return {
-                                id: t._id.toString(),
-                                name: t.name,
-                                memberCount: t.users.length,
-                                activeServerId: t.activeServerId ?? null,
-                                activeServerName: activeServer?.name ?? t.activeServerId ?? null,
-                            };
-                        }));
+                        const result = await getTeamsList(cookieToken as string | undefined, params.guildId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .get("guilds/:guildId/teams/:teamId", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const guild = await GuildModel.findOne({ guildId: params.guildId });
-                        if (!guild) { set.status = 404; return { error: "Guild not found" }; }
-                        const team = await findGuildTeam(guild, params.teamId as string);
-                        if (!team) { set.status = 404; return { error: "Team not found" }; }
-                        const users = await team.getUsers();
-                        const servers = await Promise.all(team.servers.map(async s => {
-                            const server = await ServerModel.findOne({ serverId: s.serverId });
-                            return {
-                                serverId: s.serverId,
-                                name: server?.name ?? s.serverId,
-                                ip: server?.ip ?? null,
-                                port: server?.port ?? null,
-                                pairedItemCounts: {
-                                    smartSwitch: s.pairedItems.smartSwitch.length,
-                                    smartAlarm: s.pairedItems.smartAlarm.length,
-                                    storageMonitor: s.pairedItems.storageMonitor.length,
-                                },
-                            };
-                        }));
-                        return {
-                            id: team._id.toString(),
-                            name: team.name,
-                            users: users.map(u => ({ id: u._id.toString(), userId: u.userId })),
-                            activeServerId: team.activeServerId ?? null,
-                            activeCredentialUserId: team.activeCredentialUserId?.toString() ?? null,
-                            servers,
-                        };
+                        const result = await getTeamDetail(cookieToken as string | undefined, params.guildId as string, params.teamId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .post("guilds/:guildId/teams", async ({ params, body, cookieToken, set }) => {
                         if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
@@ -270,36 +188,9 @@ export class WebServer extends Elysia {
                         return { ok: true };
                     })
                     .get("guilds/:guildId/teams/:teamId/addable-users", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const guild = await GuildModel.findOne({ guildId: params.guildId });
-                        if (!guild) { set.status = 404; return { error: "Guild not found" }; }
-                        const team = await findGuildTeam(guild, params.teamId as string);
-                        if (!team) { set.status = 404; return { error: "Team not found" }; }
-                        const discordGuild = guild.getDiscordGuild();
-                        if (!discordGuild) { set.status = 404; return { error: "Discord server not found" }; }
-                        const currentMemberIds = new Set(team.users.map(id => id.toString()));
-                        const linkedUsers = await UserModel.find();
-                        const candidateIds = linkedUsers
-                            .filter(u => !currentMemberIds.has(u._id.toString()))
-                            .map(u => u.userId);
-                        // members.cache is only whatever's been seen since the bot last restarted (interactions,
-                        // messages, etc.) - a member who linked credentials without triggering one of those in
-                        // this guild's cache window won't be there. Fetch the specific candidate ids instead of
-                        // trusting the cache, falling back to it only if the fetch itself fails.
-                        const members = candidateIds.length
-                            ? await discordGuild.members.fetch({ user: candidateIds }).catch(() => discordGuild.members.cache)
-                            : discordGuild.members.cache;
-                        const candidates = [];
-                        for (const u of linkedUsers) {
-                            if (currentMemberIds.has(u._id.toString())) continue;
-                            const member = members.get(u.userId);
-                            if (!member) continue;
-                            candidates.push({ userId: u.userId, displayName: member.displayName });
-                        }
-                        return candidates;
+                        const result = await getAddableUsers(cookieToken as string | undefined, params.guildId as string, params.teamId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .post("guilds/:guildId/teams/:teamId/members", async ({ params, body, cookieToken, set }) => {
                         if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
@@ -316,38 +207,14 @@ export class WebServer extends Elysia {
                         return { ok: true };
                     })
                     .get("guilds/:guildId/teams/:teamId/servers/:serverId", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const guild = await GuildModel.findOne({ guildId: params.guildId });
-                        if (!guild) { set.status = 404; return { error: "Guild not found" }; }
-                        const team = await findGuildTeam(guild, params.teamId as string);
-                        if (!team) { set.status = 404; return { error: "Team not found" }; }
-                        const serverId = params.serverId as string;
-                        const teamServer = team.servers.find(s => s.serverId === serverId);
-                        if (!teamServer) { set.status = 404; return { error: "This team hasn't paired with that server" }; }
-                        const serverDb = await ServerModel.findOne({ serverId });
-                        const isActive = serverId === team.activeServerId;
-                        // only auto-fetch live data for the active server (reuses the open connection, fast) -
-                        // any other server requires an explicit /ping since that can be slow or fail
-                        const live = isActive ? await getServerSnapshot(team, serverId) : null;
-                        return {
-                            serverId,
-                            name: serverDb?.name ?? serverId,
-                            img: serverDb?.img ?? null,
-                            url: serverDb?.url ?? null,
-                            ip: serverDb?.ip ?? null,
-                            port: serverDb?.port ?? null,
-                            isActive,
-                            pairedItems: {
-                                smartSwitch: teamServer.pairedItems.smartSwitch.map(s => s.id),
-                                smartAlarm: teamServer.pairedItems.smartAlarm.map(a => a.id),
-                                storageMonitor: teamServer.pairedItems.storageMonitor.map(s => s.id),
-                            },
-                            live: live && !("error" in live) ? live : null,
-                            liveError: live && "error" in live ? live.error : null,
-                        };
+                        const result = await getServerDetail(
+                            cookieToken as string | undefined,
+                            params.guildId as string,
+                            params.teamId as string,
+                            params.serverId as string,
+                        );
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .post("guilds/:guildId/teams/:teamId/servers/:serverId/ping", async ({ params, cookieToken, set }) => {
                         if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
@@ -373,6 +240,9 @@ export class WebServer extends Elysia {
                         if (!team) { set.status = 404; return { error: "Team not found" }; }
                         const result = await getServerMap(team, params.serverId as string);
                         if ("error" in result) { set.status = 400; return { error: result.error }; }
+                        // the map only changes on wipe - let the browser skip refetching it entirely for a while,
+                        // overriding the global no-store default set in onRequest
+                        set.headers["Cache-Control"] = "private, max-age=300";
                         return new Response(Buffer.from(result), { headers: { "Content-Type": "image/jpeg" } });
                     })
                     .post("guilds/:guildId/teams/:teamId/servers/:serverId/entities/:entityId/toggle", async ({ params, body, cookieToken, set }) => {
@@ -392,27 +262,18 @@ export class WebServer extends Elysia {
                         if (!conn) { set.status = 400; return { error: "Not connected to this server" }; }
                         const { value } = body as { value: boolean };
                         await conn.setEntityValue(Number(params.entityId), value);
+                        invalidateServerSnapshot(team._id, params.serverId as string);
                         return { ok: true };
                     })
                     .get("guilds/:guildId/permission-groups/definitions", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        return PERMISSIONS;
+                        const result = await getPermissionDefinitions(cookieToken as string | undefined, params.guildId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .get("guilds/:guildId/permission-groups", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const groups = await PermissionGroupModel.find({ guildId: params.guildId });
-                        return groups.map(g => ({
-                            id: g._id.toString(),
-                            name: g.name,
-                            permissions: g.permissions,
-                            memberCount: g.getMembers().length,
-                        }));
+                        const result = await getPermissionGroupsList(cookieToken as string | undefined, params.guildId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .post("guilds/:guildId/permission-groups", async ({ params, body, cookieToken, set }) => {
                         if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
@@ -428,18 +289,9 @@ export class WebServer extends Elysia {
                         return { ok: true, id: created._id.toString() };
                     })
                     .get("guilds/:guildId/permission-groups/:groupId", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const group = await PermissionGroupModel.findOne({ _id: params.groupId, guildId: params.guildId });
-                        if (!group) { set.status = 404; return { error: "Permission group not found" }; }
-                        return {
-                            id: group._id.toString(),
-                            name: group.name,
-                            permissions: group.permissions,
-                            discordUsers: group.getMembers(),
-                        };
+                        const result = await getPermissionGroupDetail(cookieToken as string | undefined, params.guildId as string, params.groupId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .patch("guilds/:guildId/permission-groups/:groupId", async ({ params, body, cookieToken, set }) => {
                         if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
@@ -471,21 +323,9 @@ export class WebServer extends Elysia {
                         return { ok: true };
                     })
                     .get("guilds/:guildId/permission-groups/:groupId/assignable-members", async ({ params, cookieToken, set }) => {
-                        if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {
-                            set.status = 401;
-                            return { error: "Not authorized" };
-                        }
-                        const group = await PermissionGroupModel.findOne({ _id: params.groupId, guildId: params.guildId });
-                        if (!group) { set.status = 404; return { error: "Permission group not found" }; }
-                        const discordGuild = group.getDiscordGuild();
-                        if (!discordGuild) { set.status = 404; return { error: "Discord server not found" }; }
-                        const candidates = [];
-                        for (const member of discordGuild.members.cache.values()) {
-                            if (member.user.bot) continue;
-                            if (member.roles.cache.has(group.roleId)) continue;
-                            candidates.push({ userId: member.id, displayName: member.displayName });
-                        }
-                        return candidates;
+                        const result = await getAssignableMembers(cookieToken as string | undefined, params.guildId as string, params.groupId as string);
+                        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+                        return result.data;
                     })
                     .post("guilds/:guildId/permission-groups/:groupId/members", async ({ params, body, cookieToken, set }) => {
                         if (!(await requireGuildAdmin(cookieToken as string | undefined, params.guildId as string))) {

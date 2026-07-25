@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, useParams, useLoaderData, useRevalidator, type LoaderFunctionArgs } from "react-router-dom";
 import { GuildSubNav } from "../components/GuildSubNav";
 import { EmptyState, Table, Tbody, Td, Th, Thead, Tr } from "../components/Table";
+import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
 interface TeamSummary {
     id: string;
@@ -11,23 +12,22 @@ interface TeamSummary {
     activeServerName: string | null;
 }
 
-export default () => {
+export async function loader({ params }: LoaderFunctionArgs): Promise<TeamSummary[]> {
+    const res = await fetch(`/api/guilds/${params.guildId}/teams`);
+    const data = await res.json();
+    if (!res.ok) throw new Response(data?.error ?? "Failed to load teams", { status: res.status });
+    return Array.isArray(data) ? data : [];
+}
+
+export function Component() {
     const { guildId } = useParams<{ guildId: string }>();
     const navigate = useNavigate();
-    const [teams, setTeams] = useState<TeamSummary[] | null>(null);
+    const teams = useLoaderData() as TeamSummary[];
+    const revalidator = useRevalidator();
     const [creating, setCreating] = useState(false);
     const [name, setName] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const load = () => {
-        if (!guildId) return;
-        fetch(`/api/guilds/${guildId}/teams`)
-            .then((res) => res.json())
-            .then((data) => setTeams(Array.isArray(data) ? data : []));
-    };
-
-    useEffect(load, [guildId]);
 
     const submit = async () => {
         if (!guildId || !name.trim()) return;
@@ -46,7 +46,7 @@ export default () => {
         }
         setCreating(false);
         setName("");
-        load();
+        revalidator.revalidate();
     };
 
     if (!guildId) return null;
@@ -105,9 +105,7 @@ export default () => {
                     {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
                 </div>
             )}
-            {teams === null ? (
-                <p className="text-sm text-neutral-500">Loading...</p>
-            ) : teams.length === 0 ? (
+            {teams.length === 0 ? (
                 <EmptyState>No teams yet. Create one with the /team create Discord command.</EmptyState>
             ) : (
                 <Table>
@@ -131,4 +129,6 @@ export default () => {
             )}
         </div>
     );
-};
+}
+
+export const ErrorBoundary = RouteErrorBoundary;

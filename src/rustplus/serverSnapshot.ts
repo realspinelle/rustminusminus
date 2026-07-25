@@ -1,4 +1,5 @@
 import { RustPlus } from "rustminus";
+import type { Types } from "mongoose";
 import type { TeamClass } from "../models/Team";
 import { ServerModel } from "../models/Server";
 import { getActiveRustplus } from "./connections";
@@ -37,6 +38,33 @@ export interface ServerSnapshot {
 }
 
 type TeamServer = TeamClass["servers"][number];
+
+const SNAPSHOT_TTL_MS = 4_000;
+const MAP_TTL_MS = 5 * 60_000;
+
+/**
+ * De-dupes and rate-limits calls to the real Rust+ server: without this, every dashboard
+ * viewer (and every switch toggle, which reloads the page's data) triggered its own round
+ * of per-entity RCON calls, which was enough concurrent load to crash the game server.
+ */
+function withCache<T>(cache: Map<string, { expires: number; promise: Promise<T> }>, key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+    const hit = cache.get(key);
+    if (hit && hit.expires > Date.now()) return hit.promise;
+    const promise = fn().catch(err => {
+        cache.delete(key);
+        throw err;
+    });
+    cache.set(key, { expires: Date.now() + ttlMs, promise });
+    return promise;
+}
+
+const snapshotCache = new Map<string, { expires: number; promise: Promise<ServerSnapshot | { error: string }> }>();
+const mapCache = new Map<string, { expires: number; promise: Promise<Uint8Array | { error: string }> }>();
+
+/** Clears the cached snapshot so the next read reflects a just-made change (e.g. a switch toggle). */
+export function invalidateServerSnapshot(teamId: Types.ObjectId | string, serverId: string) {
+    snapshotCache.delete(`${teamId}:${serverId}`);
+}
 
 /**
  * Resolves a RustPlus connection to use for `serverId`: reuses the team's persistent connection
@@ -134,30 +162,34 @@ async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<Se
     };
 }
 
-/** Live device/server snapshot for one of a team's paired servers - see {@link resolveConnection}. */
+/** Live device/server snapshot for one of a team's paired servers - see {@link resolveConnection}. Cached briefly (see {@link SNAPSHOT_TTL_MS}). */
 export async function getServerSnapshot(team: TeamClass, serverId: string): Promise<ServerSnapshot | { error: string }> {
     const server = team.servers.find(s => s.serverId === serverId);
     if (!server) return { error: "This team hasn't paired with that server" };
 
-    const conn = await resolveConnection(team, serverId);
-    if ("error" in conn) return conn;
-    try {
-        return await buildSnapshot(conn.rustplus, server);
-    } finally {
-        if (conn.ephemeral) conn.rustplus.disconnect();
-    }
+    return withCache(snapshotCache, `${team._id}:${serverId}`, SNAPSHOT_TTL_MS, async () => {
+        const conn = await resolveConnection(team, serverId);
+        if ("error" in conn) return conn;
+        try {
+            return await buildSnapshot(conn.rustplus, server);
+        } finally {
+            if (conn.ephemeral) conn.rustplus.disconnect();
+        }
+    });
 }
 
-/** Raw JPEG map image bytes for a team's paired server - see {@link resolveConnection}. */
+/** Raw JPEG map image bytes for a team's paired server - see {@link resolveConnection}. Cached for {@link MAP_TTL_MS} since the map only changes on wipe. */
 export async function getServerMap(team: TeamClass, serverId: string): Promise<Uint8Array | { error: string }> {
-    const conn = await resolveConnection(team, serverId);
-    if ("error" in conn) return conn;
-    try {
-        const map = await conn.rustplus.getMap();
-        return map.jpgImage;
-    } catch {
-        return { error: "Could not fetch the map" };
-    } finally {
-        if (conn.ephemeral) conn.rustplus.disconnect();
-    }
+    return withCache(mapCache, `${team._id}:${serverId}`, MAP_TTL_MS, async () => {
+        const conn = await resolveConnection(team, serverId);
+        if ("error" in conn) return conn;
+        try {
+            const map = await conn.rustplus.getMap();
+            return map.jpgImage;
+        } catch {
+            return { error: "Could not fetch the map" };
+        } finally {
+            if (conn.ephemeral) conn.rustplus.disconnect();
+        }
+    });
 }

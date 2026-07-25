@@ -1,27 +1,26 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLoaderData } from "react-router-dom";
 import { EmptyState, Table, Tbody, Td, Th, Thead, Tr } from "../components/Table";
+import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
 interface GuildSummary {
     guildId: string;
     name: string;
 }
 
-export default () => {
-    const [guilds, setGuilds] = useState<GuildSummary[] | null>(null);
+export async function loader(): Promise<GuildSummary[]> {
+    const res = await fetch("/api/guilds");
+    const data = await res.json();
+    if (!res.ok) throw new Response(data?.error ?? "Failed to load guilds", { status: res.status });
+    return Array.isArray(data) ? data : [];
+}
 
-    useEffect(() => {
-        fetch("/api/guilds")
-            .then((res) => res.json())
-            .then((data) => setGuilds(Array.isArray(data) ? data : []));
-    }, []);
+export function Component() {
+    const guilds = useLoaderData() as GuildSummary[];
 
     return (
         <div className="flex flex-col gap-4">
             <h1 className="text-2xl font-semibold text-white">Guilds</h1>
-            {guilds === null ? (
-                <p className="text-sm text-neutral-500">Loading...</p>
-            ) : guilds.length === 0 ? (
+            {guilds.length === 0 ? (
                 <EmptyState>No guilds found. Invite the bot and grant it access to manage a server.</EmptyState>
             ) : (
                 <Table>
@@ -50,4 +49,6 @@ export default () => {
             )}
         </div>
     );
-};
+}
+
+export const ErrorBoundary = RouteErrorBoundary;

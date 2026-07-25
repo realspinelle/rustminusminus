@@ -1,56 +1,90 @@
-import fs from "fs"
-import fsa from "fs/promises";
-import cssLoader from 'bun-css-loader';
+import fs from "fs/promises";
+import { watch } from "fs";
+import postcss from "postcss";
+import tailwindcss from "@tailwindcss/postcss";
 import { WebServer } from "./classes/WebServer";
 
-const TAILWIND_ARGS = ["bunx", "tailwindcss", "-i", "src/client/css/tailwind.css", "-o", "public/css/tailwind.css"];
+const CLIENT_ENTRY = "src/client/index.tsx";
+const JS_OUT_DIR = "public/js";
+const CSS_ENTRY = "src/client/css/tailwind.css";
+const CSS_OUT = "public/css/tailwind.css";
+const WATCH_DIR = "./src/client";
 
-let tailwindWatchStarted = false;
-const buildTailwind = async () => {
-    await fsa.mkdir("./public/css", { recursive: true });
-    if (Bun.env.NODE_ENV == "development") {
-        // persistent watcher instead of one-shot recompiles per rebuild
-        if (tailwindWatchStarted) return;
-        tailwindWatchStarted = true;
-        Bun.spawn([...TAILWIND_ARGS, "--watch"], { stdout: "inherit", stderr: "inherit" });
-        return;
-    }
-    await Bun.spawn([...TAILWIND_ARGS, "--minify"], { stdout: "inherit", stderr: "inherit" }).exited;
-}
+const BOOT_ID = crypto.randomUUID().slice(0, 8);
+let buildCounter = 0;
 
-let running = false;
-const build = async () => {
-    if (running) return;
-    running = true;
-    console.log("Building website ...");
-    if (await fsa.exists("./public/js")) {
-        await fsa.rmdir("./public/js", { recursive: true });
-    }
-    await Bun.build({
-        entrypoints: ["src/client/index.tsx"],
-        outdir: "public/js",
+async function buildJs() {
+    const result = await Bun.build({
+        entrypoints: [CLIENT_ENTRY],
+        outdir: JS_OUT_DIR,
         splitting: true,
         minify: Bun.env.NODE_ENV != "development",
         target: "browser",
         format: "esm",
         define: {
-            "process.env.NODE_ENV": JSON.stringify(Bun.env.NODE_ENV || "production")
+            "process.env.NODE_ENV": JSON.stringify(Bun.env.NODE_ENV || "production"),
         },
-        plugins: [
-            cssLoader(),
-        ],
     });
-    if (Bun.env.NODE_ENV == "development") {
-        WebServer.websockets.forEach(e => e.send("lolilol"));
+    if (!result.success) {
+        throw new Error("JS build failed:\n" + result.logs.join("\n"));
     }
-    running = false;
 }
-export default async () => {
-    await buildTailwind();
-    if (Bun.env.NODE_ENV == "development") {
-        fs.watch('./src/client', { recursive: true }, async (eventType, filename) => {
-            build();
+
+async function buildCss() {
+    await fs.mkdir("public/css", { recursive: true });
+    const input = await fs.readFile(CSS_ENTRY, "utf-8");
+    const result = await postcss([tailwindcss()]).process(input, { from: CSS_ENTRY, to: CSS_OUT });
+    await fs.writeFile(CSS_OUT, result.css);
+}
+
+let buildPromise: Promise<void> | null = null;
+
+/**
+ * Rebuilds JS+CSS together so they can never drift out of sync (the previous version ran two
+ * independent watchers for outputs that had to stay in sync - one silently died while the other
+ * kept working, leaving compiled CSS hours stale relative to the JS bundle and page markup).
+ * Memoized so concurrent callers (e.g. concurrent SSR requests during a rebuild) share one
+ * in-flight build instead of triggering duplicate ones.
+ */
+export function ensureClientBuilt(): Promise<void> {
+    if (!buildPromise) {
+        buildPromise = (async () => {
+            console.log("Building website ...");
+            await Promise.all([buildJs(), buildCss()]);
+            buildCounter++;
+        })().catch(error => {
+            buildPromise = null;
+            throw error;
         });
     }
-    build();
+    return buildPromise;
+}
+
+/**
+ * Cache-busting query value for the served JS/CSS URLs. In development this is a fresh value on
+ * every call regardless of whether a rebuild actually happened, so the browser can never serve a
+ * stale cached bundle while iterating. In production it only changes on an actual successful
+ * rebuild, so assets stay cacheable - seeded with a random boot id (not just the counter) so a
+ * fresh deploy's first build doesn't reuse the same "?v=1" URL as the previous deployment despite
+ * shipping different code (which would collide with anything that cached the old response).
+ */
+export function getAssetVersion(): string {
+    return Bun.env.NODE_ENV == "development" ? String(Date.now()) : `${BOOT_ID}-${buildCounter}`;
+}
+
+let watchStarted = false;
+
+export default async function websiteBuilding() {
+    await ensureClientBuilt();
+    if (Bun.env.NODE_ENV == "development" && !watchStarted) {
+        watchStarted = true;
+        let debounce: ReturnType<typeof setTimeout> | null = null;
+        watch(WATCH_DIR, { recursive: true }, () => {
+            if (debounce) clearTimeout(debounce);
+            debounce = setTimeout(() => {
+                buildPromise = null;
+                WebServer.websockets.forEach(ws => ws.send("lolilol"));
+            }, 150);
+        });
+    }
 }

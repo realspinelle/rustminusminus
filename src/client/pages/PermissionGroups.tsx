@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, useParams, useLoaderData, useRevalidator, type LoaderFunctionArgs } from "react-router-dom";
 import { GuildSubNav } from "../components/GuildSubNav";
 import { EmptyState, Table, Tbody, Td, Th, Thead, Tr } from "../components/Table";
+import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
 interface PermissionGroupSummary {
     id: string;
@@ -10,23 +11,22 @@ interface PermissionGroupSummary {
     memberCount: number;
 }
 
-export default () => {
+export async function loader({ params }: LoaderFunctionArgs): Promise<PermissionGroupSummary[]> {
+    const res = await fetch(`/api/guilds/${params.guildId}/permission-groups`);
+    const data = await res.json();
+    if (!res.ok) throw new Response(data?.error ?? "Failed to load permission groups", { status: res.status });
+    return Array.isArray(data) ? data : [];
+}
+
+export function Component() {
     const { guildId } = useParams<{ guildId: string }>();
     const navigate = useNavigate();
-    const [groups, setGroups] = useState<PermissionGroupSummary[] | null>(null);
+    const groups = useLoaderData() as PermissionGroupSummary[];
+    const revalidator = useRevalidator();
     const [creating, setCreating] = useState(false);
     const [name, setName] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    const load = () => {
-        if (!guildId) return;
-        fetch(`/api/guilds/${guildId}/permission-groups`)
-            .then((res) => res.json())
-            .then((data) => setGroups(Array.isArray(data) ? data : []));
-    };
-
-    useEffect(load, [guildId]);
 
     const submit = async () => {
         if (!guildId || !name.trim()) return;
@@ -45,7 +45,7 @@ export default () => {
         }
         setCreating(false);
         setName("");
-        load();
+        revalidator.revalidate();
     };
 
     if (!guildId) return null;
@@ -99,9 +99,7 @@ export default () => {
                     {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
                 </div>
             )}
-            {groups === null ? (
-                <p className="text-sm text-neutral-500">Loading...</p>
-            ) : groups.length === 0 ? (
+            {groups.length === 0 ? (
                 <EmptyState>No permission groups yet. Create one to delegate access without full admin.</EmptyState>
             ) : (
                 <Table>
@@ -129,4 +127,6 @@ export default () => {
             )}
         </div>
     );
-};
+}
+
+export const ErrorBoundary = RouteErrorBoundary;
