@@ -5,11 +5,13 @@ import { ServerModel } from "../models/Server";
 import { getActiveRustplus } from "./connections";
 import { withCache } from "../utils";
 import { getItemCatalog } from "./itemCatalog";
+import { displayName } from "./pairedItems";
 
 export type StorageEntity =
-    | { id: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
+    | { id: string; name: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
     | {
         id: string;
+        name: string;
         kind: "storage";
         capacity: number;
         items: { itemId: number; name: string; shortName: string; quantity: number; isBlueprint: boolean }[];
@@ -21,8 +23,8 @@ export interface ServerSnapshot {
     queuedPlayers: number;
     mapName: string;
     wipeTime: number;
-    switches: { id: string; value: boolean }[];
-    alarms: { id: string; value: boolean; lastTriggered: string | null }[];
+    switches: { id: string; name: string; value: boolean }[];
+    alarms: { id: string; name: string; value: boolean; lastTriggered: string | null }[];
     storage: StorageEntity[];
 }
 
@@ -91,12 +93,13 @@ async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<Se
     const [switches, alarms, storage] = await Promise.all([
         Promise.all(server.pairedItems.smartSwitch.map(async s => {
             const entityInfo = await rustplus.getEntityInfo(Number(s.id));
-            return { id: s.id, value: entityInfo.payload?.value ?? false };
+            return { id: s.id, name: displayName(s, "smartSwitch"), value: entityInfo.payload?.value ?? false };
         })),
         Promise.all(server.pairedItems.smartAlarm.map(async a => {
             const entityInfo = await rustplus.getEntityInfo(Number(a.id));
             return {
                 id: a.id,
+                name: displayName(a, "smartAlarm"),
                 value: entityInfo.payload?.value ?? false,
                 lastTriggered: a.lastTriggered ? a.lastTriggered.toISOString() : null,
             };
@@ -104,9 +107,11 @@ async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<Se
         Promise.all(server.pairedItems.storageMonitor.map(async (s): Promise<StorageEntity> => {
             const entityInfo = await rustplus.getEntityInfo(Number(s.id));
             const payload = entityInfo.payload;
+            const name = displayName(s, "storageMonitor");
             if (payload?.hasProtection) {
                 return {
                     id: s.id,
+                    name,
                     kind: "cupboard",
                     hasProtection: true,
                     protectionExpiry: payload.protectionExpiry ?? null,
@@ -122,7 +127,7 @@ async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<Se
                     isBlueprint: item.itemIsBlueprint,
                 };
             });
-            return { id: s.id, kind: "storage", capacity: payload?.capacity ?? 0, items };
+            return { id: s.id, name, kind: "storage", capacity: payload?.capacity ?? 0, items };
         })),
     ]);
 

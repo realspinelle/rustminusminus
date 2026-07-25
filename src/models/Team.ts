@@ -6,18 +6,28 @@ import { GuildModel } from "./Guild";
 import { registry } from "../modules/ModuleRegistry";
 import { grantRole, revokeRole } from "../utils/discordRoles";
 
+/** One live-updating Discord message tracked by `key` (e.g. a paired device's entity id), so it
+ *  can be looked up and edited in place instead of reposted - see src/discord/trackedEmbed.ts. */
+export interface TrackedMessage {
+    id: string;
+    key: string;
+}
+
 const ServerSchema = {
     serverId: { type: String, required: true },
     pairedItems: {
         smartSwitch: [{
-            id: { type: String, required: true }
+            id: { type: String, required: true },
+            name: { type: String }
         }],
         smartAlarm: [{
             id: { type: String, required: true },
+            name: { type: String },
             lastTriggered: { type: Date }
         }],
         storageMonitor: [{
-            id: { type: String, required: true }
+            id: { type: String, required: true },
+            name: { type: String }
         }]
     }
 };
@@ -37,31 +47,46 @@ const TeamSchema = new Schema({
         information: {
             id: { type: String, required: true },
             messages: [{
-                id: { type: String, required: true }
+                id: { type: String, required: true },
+                key: { type: String, required: true }
             }]
         },
         servers: {
             id: { type: String, required: true },
             messages: [{
-                id: { type: String, required: true }
+                id: { type: String, required: true },
+                key: { type: String, required: true }
             }]
         },
         switches: {
             id: { type: String, required: true },
             messages: [{
-                id: { type: String, required: true }
+                id: { type: String, required: true },
+                key: { type: String, required: true }
             }]
         },
         alarms: {
             id: { type: String, required: true },
             messages: [{
-                id: { type: String, required: true }
+                id: { type: String, required: true },
+                key: { type: String, required: true }
             }]
         },
         storageMonitors: {
             id: { type: String, required: true },
             messages: [{
-                id: { type: String, required: true }
+                id: { type: String, required: true },
+                key: { type: String, required: true }
+            }]
+        },
+        // Optional (unlike the other channels above): older teams predate this channel and are
+        // lazily backfilled by ensureEventsChannel() on first use, so it must not be required=true
+        // or saving a pre-existing team without one would fail schema validation.
+        events: {
+            id: { type: String },
+            messages: [{
+                id: { type: String, required: true },
+                key: { type: String, required: true }
             }]
         },
         roleId: { type: String, required: true }
@@ -86,20 +111,21 @@ export class TeamClass extends Document<Types.ObjectId> {
         category: { id: string };
         playerActivity: { id: string };
         teamChat: { id: string };
-        information: { id: string; messages: { id: string }[] };
-        servers: { id: string; messages: { id: string }[] };
-        switches: { id: string; messages: { id: string }[] };
-        alarms: { id: string; messages: { id: string }[] };
-        storageMonitors: { id: string; messages: { id: string }[] };
+        information: { id: string; messages: TrackedMessage[] };
+        servers: { id: string; messages: TrackedMessage[] };
+        switches: { id: string; messages: TrackedMessage[] };
+        alarms: { id: string; messages: TrackedMessage[] };
+        storageMonitors: { id: string; messages: TrackedMessage[] };
+        events: { id?: string; messages: TrackedMessage[] };
         roleId: string;
     };
     users!: Types.ObjectId[];
     servers!: {
         serverId: string;
         pairedItems: {
-            smartSwitch: { id: string }[];
-            smartAlarm: { id: string; lastTriggered?: Date }[];
-            storageMonitor: { id: string }[];
+            smartSwitch: { id: string; name?: string }[];
+            smartAlarm: { id: string; name?: string; lastTriggered?: Date }[];
+            storageMonitor: { id: string; name?: string }[];
         };
     }[];
     activeServerId?: string;
@@ -216,8 +242,10 @@ export class TeamClass extends Document<Types.ObjectId> {
      * `guild.channels.cache.get(team.discord.category.id)` instead, as Guild.ts already does).
      */
     async getChannel(key: Exclude<keyof TeamClass["discord"], "roleId" | "category">) {
+        const channelId = this.discord[key].id;
+        if (!channelId) return null;
         let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel = guild?.channels.cache.get(this.discord[key].id);
+        let channel = guild?.channels.cache.get(channelId);
         if (!channel?.isTextBased()) return null;
         return channel;
     }
