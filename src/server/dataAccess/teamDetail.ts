@@ -3,6 +3,7 @@ import { ServerModel } from "../../models/Server";
 import { UserModel } from "../../models/User";
 import { requireGuildAdmin } from "../../permissions/web";
 import { fail, ok, findGuildTeam } from "./shared";
+import { getSteamName } from "../../classes/SteamApi";
 
 export async function getTeamDetail(cookieToken: string | undefined, guildId: string, teamId: string) {
     if (!(await requireGuildAdmin(cookieToken, guildId))) {
@@ -18,6 +19,7 @@ export async function getTeamDetail(cookieToken: string | undefined, guildId: st
     const members = discordGuild && memberIds.length
         ? await discordGuild.members.fetch({ user: memberIds }).catch(() => discordGuild.members.cache)
         : null;
+    const steamNames = await Promise.all(users.map(u => getSteamName(u.credentials.steam_id)));
     const servers = await Promise.all(team.servers.map(async s => {
         const server = await ServerModel.findOne({ serverId: s.serverId });
         return {
@@ -35,10 +37,12 @@ export async function getTeamDetail(cookieToken: string | undefined, guildId: st
     return ok({
         id: team._id.toString(),
         name: team.name,
-        users: users.map(u => ({
+        users: users.map((u, i) => ({
             id: u._id.toString(),
             userId: u.userId,
             displayName: members?.get(u.userId)?.displayName ?? null,
+            steamId: u.credentials.steam_id,
+            steamName: steamNames[i],
         })),
         activeServerId: team.activeServerId ?? null,
         activeCredentialUserId: team.activeCredentialUserId?.toString() ?? null,

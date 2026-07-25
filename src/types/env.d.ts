@@ -6,5 +6,6 @@ declare module "bun" {
         OAUTH_SECRET: string;
         PROTOCOL: string;
         MONGODB_URI: string;
+        STEAM_API_KEY: string;
     }
 }
