@@ -3,7 +3,9 @@ export type PermissionId =
     | "chatlinks.manage"
     | "switches.toggle"
     | "alarms.manage"
-    | "raidalerts.manage";
+    | "raidalerts.manage"
+    | "storagemonitors.manage"
+    | "mapevents.manage";
 
 export interface PermissionDefinition {
     id: PermissionId;
@@ -28,19 +30,31 @@ export const PERMISSIONS: PermissionDefinition[] = [
     {
         id: "switches.toggle",
         label: "Toggle switches",
-        description: "Reserved — not yet enforced.",
-        status: "reserved",
+        description: "Toggle and rename paired smart switches.",
+        status: "enforced",
     },
     {
         id: "alarms.manage",
         label: "Manage alarms",
-        description: "Reserved — no alarms module yet.",
-        status: "reserved",
+        description: "Rename and list paired smart alarms.",
+        status: "enforced",
     },
     {
         id: "raidalerts.manage",
         label: "Manage raid alerts",
-        description: "Reserved — no raid-alerts module yet.",
+        description: "Configure the raid-alert proximity radius.",
+        status: "enforced",
+    },
+    {
+        id: "storagemonitors.manage",
+        label: "Manage storage monitors",
+        description: "Rename and list paired storage monitors/tool cupboards.",
+        status: "enforced",
+    },
+    {
+        id: "mapevents.manage",
+        label: "Manage map events",
+        description: "Reserved — no map-events module yet.",
         status: "reserved",
     },
 ];

@@ -40,7 +40,7 @@ export class GuildClass extends Document<Types.ObjectId> {
         if (!role) return false;
         let setup = await this.setupTeamChannels(name, role);
         if (!setup) return false;
-        let { categoryChannelId, roleId, alarmsChannelId, informationChannelId, playerActivityChannelId, serversChannelId, storageMonitorsChannelId, switchesChannelId, teamchatChannelId } = setup;
+        let { categoryChannelId, roleId, alarmsChannelId, informationChannelId, playerActivityChannelId, serversChannelId, storageMonitorsChannelId, switchesChannelId, teamchatChannelId, eventsChannelId } = setup;
         let team = await TeamModel.create({
             name,
             discord: {
@@ -68,6 +68,10 @@ export class GuildClass extends Document<Types.ObjectId> {
                 },
                 switches: {
                     id: switchesChannelId,
+                    messages: []
+                },
+                events: {
+                    id: eventsChannelId,
                     messages: []
                 },
                 teamChat: {
@@ -135,6 +139,10 @@ export class GuildClass extends Document<Types.ObjectId> {
             name: "playerActivity",
             parent: categoryChannel.id
         });
+        let eventsChannel = await guild.channels.create({
+            name: "events",
+            parent: categoryChannel.id
+        });
         if (!categoryChannel) return false;
         return {
             roleId: role!.id,
@@ -145,8 +153,24 @@ export class GuildClass extends Document<Types.ObjectId> {
             switchesChannelId: switchesChannel.id,
             alarmsChannelId: alarmsChannel.id,
             storageMonitorsChannelId: storageMonitorsChannel.id,
-            playerActivityChannelId: playerActivityChannel.id
+            playerActivityChannelId: playerActivityChannel.id,
+            eventsChannelId: eventsChannel.id
         };
+    }
+
+    /** Lazily backfills the `events` channel for teams created before it existed (its `id` is
+     *  optional in the schema for exactly this reason). Safe to call unconditionally. */
+    async ensureEventsChannel(team: TeamClass): Promise<string | null> {
+        if (team.discord.events?.id) return team.discord.events.id;
+        let guild = this.getDiscordGuild();
+        if (!guild) return null;
+        let eventsChannel = await guild.channels.create({
+            name: "events",
+            parent: team.discord.category.id
+        });
+        team.discord.events = { id: eventsChannel.id, messages: [] };
+        await team.save();
+        return eventsChannel.id;
     }
 
     /** Deletes a team's category and every channel parented under it, if the category still exists. */

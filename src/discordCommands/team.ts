@@ -62,6 +62,8 @@ export default {
                 team.discord.storageMonitors.messages = [];
                 team.discord.switches.id = result2.switchesChannelId;
                 team.discord.switches.messages = [];
+                team.discord.events.id = result2.eventsChannelId;
+                team.discord.events.messages = [];
                 team.discord.teamChat.id = result2.teamchatChannelId;
                 team.save();
                 await interaction.editReply({ content: "Team channels reset!" });

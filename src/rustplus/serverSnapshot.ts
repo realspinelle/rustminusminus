@@ -4,28 +4,10 @@ import type { TeamClass } from "../models/Team";
 import { ServerModel } from "../models/Server";
 import { getActiveRustplus } from "./connections";
 import { withCache } from "../utils";
+import { displayName } from "./pairedItems";
+import { readStorageEntity, type StorageEntity } from "./storageMonitors";
 
-interface ItemDef {
-    name: string;
-    shortName: string;
-}
-
-let itemCatalog: Map<number, ItemDef> | null = null;
-async function getItemCatalog(): Promise<Map<number, ItemDef>> {
-    if (itemCatalog) return itemCatalog;
-    const raw = (await Bun.file("./items.json").json()) as { Id: number; DisplayName: string; ShortName: string }[];
-    itemCatalog = new Map(raw.map(i => [i.Id, { name: i.DisplayName, shortName: i.ShortName }]));
-    return itemCatalog;
-}
-
-export type StorageEntity =
-    | { id: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
-    | {
-        id: string;
-        kind: "storage";
-        capacity: number;
-        items: { itemId: number; name: string; shortName: string; quantity: number; isBlueprint: boolean }[];
-    };
+export type { StorageEntity };
 
 export interface ServerSnapshot {
     players: number;
@@ -33,8 +15,8 @@ export interface ServerSnapshot {
     queuedPlayers: number;
     mapName: string;
     wipeTime: number;
-    switches: { id: string; value: boolean }[];
-    alarms: { id: string; value: boolean; lastTriggered: string | null }[];
+    switches: { id: string; name: string; value: boolean }[];
+    alarms: { id: string; name: string; value: boolean; lastTriggered: string | null }[];
     storage: StorageEntity[];
 }
 
@@ -97,45 +79,23 @@ async function resolveConnection(team: TeamClass, serverId: string): Promise<{ r
 }
 
 async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<ServerSnapshot> {
-    const catalog = await getItemCatalog();
     const info = await rustplus.getInfo();
 
     const [switches, alarms, storage] = await Promise.all([
         Promise.all(server.pairedItems.smartSwitch.map(async s => {
             const entityInfo = await rustplus.getEntityInfo(Number(s.id));
-            return { id: s.id, value: entityInfo.payload?.value ?? false };
+            return { id: s.id, name: displayName(s, "smartSwitch"), value: entityInfo.payload?.value ?? false };
         })),
         Promise.all(server.pairedItems.smartAlarm.map(async a => {
             const entityInfo = await rustplus.getEntityInfo(Number(a.id));
             return {
                 id: a.id,
+                name: displayName(a, "smartAlarm"),
                 value: entityInfo.payload?.value ?? false,
                 lastTriggered: a.lastTriggered ? a.lastTriggered.toISOString() : null,
             };
         })),
-        Promise.all(server.pairedItems.storageMonitor.map(async (s): Promise<StorageEntity> => {
-            const entityInfo = await rustplus.getEntityInfo(Number(s.id));
-            const payload = entityInfo.payload;
-            if (payload?.hasProtection) {
-                return {
-                    id: s.id,
-                    kind: "cupboard",
-                    hasProtection: true,
-                    protectionExpiry: payload.protectionExpiry ?? null,
-                };
-            }
-            const items = (payload?.items ?? []).map(item => {
-                const def = catalog.get(item.itemId);
-                return {
-                    itemId: item.itemId,
-                    name: def?.name ?? `Unknown item ${item.itemId}`,
-                    shortName: def?.shortName ?? "",
-                    quantity: item.quantity,
-                    isBlueprint: item.itemIsBlueprint,
-                };
-            });
-            return { id: s.id, kind: "storage", capacity: payload?.capacity ?? 0, items };
-        })),
+        Promise.all(server.pairedItems.storageMonitor.map(s => readStorageEntity(rustplus, s))),
     ]);
 
     return {

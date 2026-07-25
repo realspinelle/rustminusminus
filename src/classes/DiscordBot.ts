@@ -2,7 +2,9 @@ import { Client, Events, Guild, REST, Routes, type ClientOptions } from "discord
 import fs from "fs/promises";
 import type { CommandType } from "../types/DiscordCommandType";
 import { GuildModel } from "../models/Guild";
+import { TeamModel } from "../models/Team";
 import { registry } from "../modules/ModuleRegistry";
+import { getActiveRustplus } from "../rustplus/connections";
 
 export class DiscordBot extends Client {
     private CLIENT_ID: undefined | string;
@@ -49,6 +51,18 @@ export class DiscordBot extends Client {
             }
             const command = owningModule.discordCommands?.find(c => c.name === interaction.commandName);
             await command?.command(interaction);
+        });
+        // Discord -> game half of the chat-relay module (the game -> Discord half is that
+        // module's onTeamMessage hook, dispatched like any other module through EventDispatcher).
+        // This direction needs its own listener since only Discord's gateway, not the module
+        // system, can tell us a human typed in one of a team's teamChat channels.
+        this.on(Events.MessageCreate, async (message) => {
+            if (message.author.bot || !message.guildId) return;
+            const team = await TeamModel.findOne({ "discord.teamChat.id": message.channelId });
+            if (!team || !registry.isEnabledForTeam("chat-relay", team)) return;
+            const conn = getActiveRustplus(team._id);
+            if (!conn?.isConnected() || !message.content) return;
+            await conn.sendTeamMessage(`[Discord] ${message.member?.displayName ?? message.author.username}: ${message.content}`);
         });
     }
     async slashCommandRegister() {
