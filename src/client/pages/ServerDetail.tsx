@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams, useLoaderData, useRevalidator, type LoaderFunctionArgs } from "react-router-dom";
-import { ArrowLeft, Bell, Box, Clock, Hourglass, Plug, Server, Shield, Users, Zap } from "lucide-react";
+import { ArrowLeft, Bell, Box, Clock, Hourglass, Plug, Radar, Search, Server, Shield, Store, Users, Zap } from "lucide-react";
 import { GuildSubNav } from "../components/GuildSubNav";
 import { Toggle } from "../components/Toggle";
 import { Lightbox } from "../components/Lightbox";
@@ -29,6 +29,10 @@ export function Component() {
     const [pinging, setPinging] = useState(false);
     const [pingError, setPingError] = useState<string | null>(null);
     const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+    const [vendingQuery, setVendingQuery] = useState("");
+    const [vendingResults, setVendingResults] = useState<string[] | null>(null);
+    const [vendingSearching, setVendingSearching] = useState(false);
+    const [vendingError, setVendingError] = useState<string | null>(null);
 
     const ping = async () => {
         setPinging(true);
@@ -59,6 +63,25 @@ export function Component() {
             body: JSON.stringify({ kind, name }),
         });
         revalidator.revalidate();
+    };
+
+    const searchVending = async () => {
+        if (!vendingQuery.trim()) return;
+        setVendingSearching(true);
+        setVendingError(null);
+        const res = await fetch(`/api/guilds/${guildId}/teams/${teamId}/servers/${serverId}/vending-search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: vendingQuery.trim() }),
+        });
+        const json = await res.json();
+        setVendingSearching(false);
+        if (!res.ok) {
+            setVendingError(json.error ?? "Search failed");
+            setVendingResults(null);
+            return;
+        }
+        setVendingResults(json.results);
     };
 
     if (!guildId || !teamId || !serverId) return null;
@@ -167,6 +190,19 @@ export function Component() {
                         />
                     </div>
 
+                    {hasModule("map-events") && live.activeEvents.length > 0 && (
+                        <SectionCard icon={<Radar className="h-4 w-4" />} title="Active events" count={live.activeEvents.length}>
+                            <div className="divide-y divide-border/60">
+                                {live.activeEvents.map((event, i) => (
+                                    <div key={i} className="flex items-center justify-between px-4 py-3">
+                                        <span className="text-sm text-neutral-200">{event.label}</span>
+                                        <span className="font-mono text-xs text-neutral-500">{event.grid}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </SectionCard>
+                    )}
+
                     {hasModule("smart-switches") && live.switches.length > 0 && (
                         <SectionCard icon={<Zap className="h-4 w-4" />} title="Switches" count={live.switches.length}>
                             <div className="grid divide-y divide-border/60 sm:grid-cols-2 sm:divide-y-0 sm:divide-x sm:[&>*:nth-child(n+3)]:border-t sm:[&>*:nth-child(n+3)]:border-border/60">
@@ -259,6 +295,45 @@ export function Component() {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        </SectionCard>
+                    )}
+
+                    {hasModule("vending-search") && data.isActive && (
+                        <SectionCard icon={<Store className="h-4 w-4" />} title="Vending search">
+                            <div className="p-3">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        value={vendingQuery}
+                                        onChange={e => setVendingQuery(e.target.value)}
+                                        onKeyDown={e => e.key === "Enter" && searchVending()}
+                                        placeholder="Search for an item…"
+                                        disabled={vendingSearching}
+                                        className="flex-1 rounded-md border border-border bg-canvas px-3 py-1.5 text-sm text-white placeholder:text-neutral-600 focus:border-accent focus:outline-none disabled:opacity-50"
+                                    />
+                                    <button
+                                        onClick={searchVending}
+                                        disabled={vendingSearching || !vendingQuery.trim()}
+                                        className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-black transition-colors hover:bg-accent-hover disabled:opacity-50"
+                                    >
+                                        <Search className="h-3.5 w-3.5" />
+                                        {vendingSearching ? "Searching…" : "Search"}
+                                    </button>
+                                </div>
+                                {vendingError && <p className="mt-2 text-xs text-red-400">{vendingError}</p>}
+                                {vendingResults && (
+                                    vendingResults.length === 0 ? (
+                                        <p className="mt-3 text-xs text-neutral-500">No vending machines selling that item.</p>
+                                    ) : (
+                                        <ul className="mt-3 flex flex-col gap-1.5">
+                                            {vendingResults.map((line, i) => (
+                                                <li key={i} className="rounded-md bg-surface-hover px-3 py-1.5 text-xs text-neutral-300">
+                                                    {line}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )
+                                )}
                             </div>
                         </SectionCard>
                     )}

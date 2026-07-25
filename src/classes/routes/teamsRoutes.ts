@@ -7,6 +7,7 @@ import { getTeamsList } from "../../server/dataAccess/teams";
 import { getTeamDetail, getAddableUsers } from "../../server/dataAccess/teamDetail";
 import { getServerDetail } from "../../server/dataAccess/serverDetail";
 import { renameDevice } from "../../server/dataAccess/deviceActions";
+import { searchVending } from "../../server/dataAccess/vendingSearch";
 import { requireTeamModuleAccess } from "../../server/dataAccess/shared";
 import { sessionPlugin } from "./session";
 import { resolveAdminGuild, resolveGuildTeam } from "./shared";
@@ -135,4 +136,17 @@ export const teamsRoutes = new Elysia({ name: "teamsRoutes" })
         );
         if (!result.ok) { set.status = result.status; return { error: result.error }; }
         return { ok: true };
+    })
+    .post("guilds/:guildId/teams/:teamId/servers/:serverId/vending-search", async ({ params, body, cookieToken, set }) => {
+        const query = (body as { query?: string }).query?.trim();
+        if (!query) { set.status = 400; return { error: "Search query is required" }; }
+        const result = await searchVending(
+            cookieToken as string | undefined,
+            params.guildId as string,
+            params.teamId as string,
+            params.serverId as string,
+            query,
+        );
+        if (!result.ok) { set.status = result.status; return { error: result.error }; }
+        return result.data;
     });
