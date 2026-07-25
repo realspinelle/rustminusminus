@@ -1,4 +1,4 @@
-import { RustPlus } from "rustminus";
+import { RustPlus, AppMarkerType } from "rustminus";
 import type { Types } from "mongoose";
 import type { TeamClass } from "../models/Team";
 import { ServerModel } from "../models/Server";
@@ -6,8 +6,16 @@ import { getActiveRustplus } from "./connections";
 import { withCache } from "../utils";
 import { displayName } from "./pairedItems";
 import { readStorageEntity, type StorageEntity } from "./storageMonitors";
+import { toGridReference } from "./gridReference";
+import { EVENT_LABELS_BY_MARKER_TYPE } from "./markerLabels";
 
 export type { StorageEntity };
+
+export interface MapEvent {
+    type: string;
+    label: string;
+    grid: string;
+}
 
 export interface ServerSnapshot {
     players: number;
@@ -18,6 +26,7 @@ export interface ServerSnapshot {
     switches: { id: string; name: string; value: boolean }[];
     alarms: { id: string; name: string; value: boolean; lastTriggered: string | null }[];
     storage: StorageEntity[];
+    activeEvents: MapEvent[];
 }
 
 type TeamServer = TeamClass["servers"][number];
@@ -81,7 +90,7 @@ async function resolveConnection(team: TeamClass, serverId: string): Promise<{ r
 async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<ServerSnapshot> {
     const info = await rustplus.getInfo();
 
-    const [switches, alarms, storage] = await Promise.all([
+    const [switches, alarms, storage, markers] = await Promise.all([
         Promise.all(server.pairedItems.smartSwitch.map(async s => {
             const entityInfo = await rustplus.getEntityInfo(Number(s.id));
             return { id: s.id, name: displayName(s, "smartSwitch"), value: entityInfo.payload?.value ?? false };
@@ -96,7 +105,17 @@ async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<Se
             };
         })),
         Promise.all(server.pairedItems.storageMonitor.map(s => readStorageEntity(rustplus, s))),
+        // best-effort: a marker-fetch failure shouldn't take down the rest of the snapshot
+        rustplus.getMapMarkers().catch(() => []),
     ]);
+
+    const activeEvents: MapEvent[] = markers
+        .filter(m => m.type in EVENT_LABELS_BY_MARKER_TYPE)
+        .map(m => ({
+            type: AppMarkerType[m.type] ?? String(m.type),
+            label: EVENT_LABELS_BY_MARKER_TYPE[m.type]!,
+            grid: toGridReference(m.x, m.y, info.mapSize),
+        }));
 
     return {
         players: info.players,
@@ -107,6 +126,7 @@ async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<Se
         switches,
         alarms,
         storage,
+        activeEvents,
     };
 }
 

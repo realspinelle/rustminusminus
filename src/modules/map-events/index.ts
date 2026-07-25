@@ -4,7 +4,7 @@ import type { InGameCommand, RustModule } from "../types";
 import type { MapMarkerEventType } from "../../rustplus/mapMarkerDiff";
 import { eventsCommand } from "./events-command";
 import { toGridReference } from "../../rustplus/gridReference";
-import { EVENT_LABELS_BY_MARKER_TYPE } from "./labels";
+import { EVENT_LABELS_BY_MARKER_TYPE } from "../../rustplus/markerLabels";
 
 const EVENT_DESCRIPTIONS: Record<MapMarkerEventType, { title: string; color: number }> = {
     cargoShipSpawned: { title: "🚢 Cargo Ship has spawned", color: 0x3498db },

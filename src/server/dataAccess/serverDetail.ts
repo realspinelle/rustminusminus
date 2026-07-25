@@ -2,7 +2,7 @@ import { GuildModel } from "../../models/Guild";
 import { ServerModel } from "../../models/Server";
 import { requireGuildAdmin } from "../../permissions/web";
 import { getServerSnapshot } from "../../rustplus/serverSnapshot";
-import { fail, ok, findGuildTeam } from "./shared";
+import { fail, ok, findGuildTeam, enabledTeamModuleIds } from "./shared";
 
 export async function getServerDetail(cookieToken: string | undefined, guildId: string, teamId: string, serverId: string) {
     if (!(await requireGuildAdmin(cookieToken, guildId))) {
@@ -27,6 +27,7 @@ export async function getServerDetail(cookieToken: string | undefined, guildId: 
         ip: serverDb?.ip ?? null,
         port: serverDb?.port ?? null,
         isActive,
+        enabledModules: enabledTeamModuleIds(team),
         pairedItems: {
             smartSwitch: teamServer.pairedItems.smartSwitch.map(s => s.id),
             smartAlarm: teamServer.pairedItems.smartAlarm.map(a => a.id),

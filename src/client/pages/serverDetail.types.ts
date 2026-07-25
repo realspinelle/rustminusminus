@@ -1,22 +1,31 @@
 export interface SwitchState {
     id: string;
+    name: string;
     value: boolean;
 }
 
 export interface AlarmState {
     id: string;
+    name: string;
     value: boolean;
     lastTriggered: string | null;
 }
 
 export type StorageEntity =
-    | { id: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
+    | { id: string; name: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
     | {
         id: string;
+        name: string;
         kind: "storage";
         capacity: number;
         items: { itemId: number; name: string; shortName: string; quantity: number; isBlueprint: boolean }[];
     };
+
+export interface MapEvent {
+    type: string;
+    label: string;
+    grid: string;
+}
 
 export interface ServerSnapshot {
     players: number;
@@ -27,6 +36,7 @@ export interface ServerSnapshot {
     switches: SwitchState[];
     alarms: AlarmState[];
     storage: StorageEntity[];
+    activeEvents: MapEvent[];
 }
 
 export interface ServerDetailResponse {
@@ -37,6 +47,7 @@ export interface ServerDetailResponse {
     ip: string | null;
     port: string | null;
     isActive: boolean;
+    enabledModules: string[];
     pairedItems: { smartSwitch: string[]; smartAlarm: string[]; storageMonitor: string[] };
     live: ServerSnapshot | null;
     liveError: string | null;

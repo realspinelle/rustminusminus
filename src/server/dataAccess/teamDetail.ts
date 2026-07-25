@@ -1,9 +1,51 @@
 import { GuildModel } from "../../models/Guild";
 import { ServerModel } from "../../models/Server";
 import { UserModel } from "../../models/User";
+import type { TeamClass } from "../../models/Team";
 import { requireGuildAdmin } from "../../permissions/web";
-import { fail, ok, findGuildTeam } from "./shared";
+import { fail, ok, findGuildTeam, enabledTeamModuleIds } from "./shared";
 import { getSteamName } from "../../classes/SteamApi";
+import { getRadiusMeters } from "../../modules/raid-alerts/settings";
+
+interface TeamStatus {
+    online: string[];
+    offline: string[];
+    dead: string[];
+}
+
+interface RecentChatMessage {
+    name: string;
+    message: string;
+    time: number;
+}
+
+/** Live, best-effort team status/chat for the team page - null fields mean "not applicable or
+ *  unavailable right now" (module disabled, not connected, or the Rust+ call itself failed). */
+async function getLiveTeamData(team: TeamClass, enabledModules: string[]) {
+    const conn = team.getActiveRustPlus();
+    const connected = !!conn?.isConnected();
+    let status: TeamStatus | null = null;
+    let recentChat: RecentChatMessage[] | null = null;
+
+    if (connected && conn) {
+        if (enabledModules.includes("team-tracker")) {
+            try {
+                const info = await conn.getTeamInfo();
+                status = {
+                    online: info.members.filter(m => m.isOnline && m.isAlive).map(m => m.name),
+                    offline: info.members.filter(m => !m.isOnline && m.isAlive).map(m => m.name),
+                    dead: info.members.filter(m => !m.isAlive).map(m => m.name),
+                };
+            } catch { status = null; }
+        }
+        try {
+            const chat = await conn.getTeamChat();
+            recentChat = chat.slice(-20).map(m => ({ name: m.name, message: m.message, time: m.time }));
+        } catch { recentChat = null; }
+    }
+
+    return { connected, status, recentChat };
+}
 
 export async function getTeamDetail(cookieToken: string | undefined, guildId: string, teamId: string) {
     if (!(await requireGuildAdmin(cookieToken, guildId))) {
@@ -34,6 +76,8 @@ export async function getTeamDetail(cookieToken: string | undefined, guildId: st
             },
         };
     }));
+    const enabledModules = enabledTeamModuleIds(team);
+    const { connected, status, recentChat } = await getLiveTeamData(team, enabledModules);
     return ok({
         id: team._id.toString(),
         name: team.name,
@@ -47,6 +91,11 @@ export async function getTeamDetail(cookieToken: string | undefined, guildId: st
         activeServerId: team.activeServerId ?? null,
         activeCredentialUserId: team.activeCredentialUserId?.toString() ?? null,
         servers,
+        enabledModules,
+        connected,
+        status,
+        recentChat,
+        raidAlertRadiusMeters: enabledModules.includes("raid-alerts") ? getRadiusMeters(team) : null,
     });
 }
 

@@ -2,7 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import { GuildModel } from "../../models/Guild";
 import type { ModuleDiscordCommand } from "../types";
 import { toGridReference } from "../../rustplus/gridReference";
-import { EVENT_LABELS_BY_MARKER_TYPE as LABELS } from "./labels";
+import { EVENT_LABELS_BY_MARKER_TYPE as LABELS } from "../../rustplus/markerLabels";
 
 export const eventsCommand = {
     name: "events",
