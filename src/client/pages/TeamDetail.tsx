@@ -9,6 +9,8 @@ interface TeamMember {
     id: string;
     userId: string;
     displayName: string | null;
+    steamId: string;
+    steamName: string | null;
 }
 
 interface TeamServer {
@@ -137,7 +139,8 @@ export function Component() {
             ) : (
                 <Table>
                     <Thead>
-                        <Th>Discord user</Th>
+                        <Th>Discord</Th>
+                        <Th>Steam</Th>
                         <Th className="text-right">Active credential</Th>
                     </Thead>
                     <Tbody>
@@ -148,6 +151,10 @@ export function Component() {
                                     <Td>
                                         <div className="text-sm text-white">{user.displayName ?? "Unknown user"}</div>
                                         <div className="font-mono text-xs text-neutral-500">{user.userId}</div>
+                                    </Td>
+                                    <Td>
+                                        <div className="text-sm text-white">{user.steamName ?? "Unknown Steam name"}</div>
+                                        <div className="font-mono text-xs text-neutral-500">{user.steamId}</div>
                                     </Td>
                                     <Td className="text-right">
                                         {isActive ? (
