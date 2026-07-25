@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useLoaderData, useRevalidator, type LoaderFunctionArgs } from "react-router-dom";
-import { Radio } from "lucide-react";
+import { MessageSquare, Radio, Send } from "lucide-react";
 import { GuildSubNav } from "../components/GuildSubNav";
 import { TeamSubNav } from "../components/TeamSubNav";
 import { EmptyState, Table, Tbody, Td, Th, Thead, Tr } from "../components/Table";
@@ -89,6 +89,9 @@ export function Component() {
     const [radiusInput, setRadiusInput] = useState(String(data.raidAlertRadiusMeters ?? ""));
     const [radiusSaving, setRadiusSaving] = useState(false);
     const [radiusError, setRadiusError] = useState<string | null>(null);
+    const [chatMessage, setChatMessage] = useState("");
+    const [chatSending, setChatSending] = useState(false);
+    const [chatError, setChatError] = useState<string | null>(null);
 
     const addMember = async () => {
         if (!selectedUserId) return;
@@ -165,6 +168,26 @@ export function Component() {
         revalidator.revalidate();
     };
 
+    const sendChat = async () => {
+        const message = chatMessage.trim();
+        if (!message) return;
+        setChatSending(true);
+        setChatError(null);
+        const res = await fetch(`/api/guilds/${guildId}/teams/${teamId}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message }),
+        });
+        const json = await res.json();
+        setChatSending(false);
+        if (!res.ok) {
+            setChatError(json.error ?? "Failed to send message");
+            return;
+        }
+        setChatMessage("");
+        revalidator.revalidate();
+    };
+
     if (!guildId || !teamId) return null;
     const hasModule = (moduleId: string) => data.enabledModules.includes(moduleId);
 
@@ -215,6 +238,44 @@ export function Component() {
                         {radiusSaving ? "Saving…" : "Save"}
                     </button>
                     {radiusError && <p className="text-xs text-red-400">{radiusError}</p>}
+                </div>
+            )}
+
+            {data.connected && (
+                <div className="mb-6">
+                    <SectionCard icon={<MessageSquare className="h-4 w-4" />} title="Team chat">
+                        <div className="max-h-64 overflow-y-auto divide-y divide-border/60">
+                            {!data.recentChat || data.recentChat.length === 0 ? (
+                                <p className="p-3 text-xs text-neutral-500">No recent messages.</p>
+                            ) : (
+                                data.recentChat.map((msg, i) => (
+                                    <div key={i} className="px-4 py-2">
+                                        <span className="text-sm font-medium text-neutral-300">{msg.name}: </span>
+                                        <span className="text-sm text-neutral-400">{msg.message}</span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 border-t border-border p-3">
+                            <input
+                                value={chatMessage}
+                                onChange={(e) => setChatMessage(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && sendChat()}
+                                placeholder="Send a message to the team…"
+                                disabled={chatSending}
+                                className="flex-1 rounded-md border border-border bg-canvas px-3 py-1.5 text-sm text-white placeholder:text-neutral-600 focus:border-accent focus:outline-none disabled:opacity-50"
+                            />
+                            <button
+                                onClick={sendChat}
+                                disabled={chatSending || !chatMessage.trim()}
+                                className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-black transition-colors hover:bg-accent-hover disabled:opacity-50"
+                            >
+                                <Send className="h-3.5 w-3.5" />
+                                {chatSending ? "Sending…" : "Send"}
+                            </button>
+                        </div>
+                        {chatError && <p className="px-3 pb-3 text-xs text-red-400">{chatError}</p>}
+                    </SectionCard>
                 </div>
             )}
 
