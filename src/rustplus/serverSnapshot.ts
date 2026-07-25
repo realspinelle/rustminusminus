@@ -4,19 +4,7 @@ import type { TeamClass } from "../models/Team";
 import { ServerModel } from "../models/Server";
 import { getActiveRustplus } from "./connections";
 import { withCache } from "../utils";
-
-interface ItemDef {
-    name: string;
-    shortName: string;
-}
-
-let itemCatalog: Map<number, ItemDef> | null = null;
-async function getItemCatalog(): Promise<Map<number, ItemDef>> {
-    if (itemCatalog) return itemCatalog;
-    const raw = (await Bun.file("./items.json").json()) as { Id: number; DisplayName: string; ShortName: string }[];
-    itemCatalog = new Map(raw.map(i => [i.Id, { name: i.DisplayName, shortName: i.ShortName }]));
-    return itemCatalog;
-}
+import { getItemCatalog } from "./itemCatalog";
 
 export type StorageEntity =
     | { id: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
