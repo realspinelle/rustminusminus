@@ -1,7 +1,9 @@
-import type { AppEntityPayload, AppTeamInfo, AppTeamMessage, RustPlus, TeamDiffEvent } from "rustminus";
+import type { AppEntityPayload, AppMarker, AppTeamInfo, AppTeamMessage, RustPlus, TeamDiffEvent } from "rustminus";
 import type { GuildClass } from "../models/Guild";
 import type { TeamClass } from "../models/Team";
 import type { ModuleLookup } from "./EnablementCache";
+import type { RustModule } from "./types";
+import { diffMapMarkers } from "../rustplus/mapMarkerDiff";
 
 interface ConnectionListeners {
     onTeamMessage: (message: AppTeamMessage) => void;
@@ -14,6 +16,10 @@ interface ConnectionContext {
     guild: GuildClass;
 }
 
+// Rust+ has no push event for map markers - this is how often each connection polls
+// getMapMarkers() to detect cargo ship/heli/crate/explosion spawns for onMapEvent consumers.
+const POLL_INTERVAL_MS = 30_000;
+
 /**
  * Owns the listener lifecycle for each live RustPlus connection and dispatches its events to
  * whichever modules are enabled for that connection's team - checked fresh via
@@ -25,6 +31,9 @@ interface ConnectionContext {
 export class EventDispatcher {
     private connectionListeners = new Map<RustPlus, ConnectionListeners>();
     private connectionContext = new Map<RustPlus, ConnectionContext>();
+    private pollTimers = new Map<RustPlus, ReturnType<typeof setInterval>>();
+    private markerSnapshots = new Map<RustPlus, AppMarker[] | undefined>();
+    private pollInFlight = new Set<RustPlus>();
 
     constructor(
         private readonly modules: ModuleLookup,
@@ -44,6 +53,7 @@ export class EventDispatcher {
         rustplus.on("teamChanged", onTeamChanged);
         rustplus.on("entityChanged", onEntityChanged);
         this.connectionListeners.set(rustplus, { onTeamMessage, onTeamChanged, onEntityChanged });
+        this.pollTimers.set(rustplus, setInterval(() => void this.tick(rustplus), POLL_INTERVAL_MS));
     }
 
     detach(rustplus: RustPlus): void {
@@ -55,6 +65,53 @@ export class EventDispatcher {
         }
         this.connectionListeners.delete(rustplus);
         this.connectionContext.delete(rustplus);
+        const timer = this.pollTimers.get(rustplus);
+        if (timer) clearInterval(timer);
+        this.pollTimers.delete(rustplus);
+        this.markerSnapshots.delete(rustplus);
+        this.pollInFlight.delete(rustplus);
+    }
+
+    /** Runs on POLL_INTERVAL_MS for every live connection: fires onTick for enabled modules, and -
+     *  only if any enabled module declares onMapEvent - polls/diffs map markers. Skips the tick
+     *  entirely if the previous one for this same connection is still running, rather than letting
+     *  ticks pile up if Rust+ is slow to respond. */
+    private async tick(rustplus: RustPlus): Promise<void> {
+        if (this.pollInFlight.has(rustplus)) return;
+        this.pollInFlight.add(rustplus);
+        try {
+            const ctx = this.connectionContext.get(rustplus);
+            if (!ctx) return;
+            const enabled = this.enabledModuleIdsForTeam(ctx.team._id.toString());
+            const enabledModules = [...enabled]
+                .map(id => this.modules.get(id))
+                .filter((mod): mod is RustModule => !!mod);
+
+            for (const mod of enabledModules) {
+                if (mod.onTick) await mod.onTick({ rustplus, team: ctx.team, guild: ctx.guild });
+            }
+
+            if (enabledModules.some(mod => mod.onMapEvent)) {
+                await this.pollMapMarkers(rustplus, ctx, enabledModules);
+            }
+        } catch (error) {
+            console.error("EventDispatcher: poll tick failed", error);
+        } finally {
+            this.pollInFlight.delete(rustplus);
+        }
+    }
+
+    private async pollMapMarkers(rustplus: RustPlus, ctx: ConnectionContext, enabledModules: RustModule[]): Promise<void> {
+        const markers = await rustplus.getMapMarkers();
+        const previous = this.markerSnapshots.get(rustplus);
+        const events = diffMapMarkers(previous, markers);
+        this.markerSnapshots.set(rustplus, markers);
+
+        for (const event of events) {
+            for (const mod of enabledModules) {
+                if (mod.onMapEvent) await mod.onMapEvent({ rustplus, team: ctx.team, guild: ctx.guild, event });
+            }
+        }
     }
 
     private async dispatchTeamMessage(rustplus: RustPlus, message: AppTeamMessage): Promise<void> {

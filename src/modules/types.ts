@@ -2,6 +2,7 @@ import type { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.j
 import type { AppEntityPayload, AppTeamInfo, AppTeamMessage, RustPlus, TeamDiffEvent } from "rustminus";
 import type { GuildClass } from "../models/Guild";
 import type { TeamClass } from "../models/Team";
+import type { MapMarkerEvent } from "../rustplus/mapMarkerDiff";
 
 /** Where a module can be toggled. A module declares its natural scope; the effective enabled
  *  check for a "team"-scoped module is: team override if present, else guild value, else
@@ -56,6 +57,12 @@ export interface RustModule {
     onTeamMessage?(ctx: ModuleContext & { message: AppTeamMessage }): void | Promise<void>;
     onTeamChanged?(ctx: ModuleContext & { info: AppTeamInfo; changes: TeamDiffEvent[] }): void | Promise<void>;
     onEntityChanged?(ctx: ModuleContext & { entityId: number; payload: AppEntityPayload }): void | Promise<void>;
+    /** Fired for each spawn/despawn event whenever any enabled module declares this hook - see
+     *  EventDispatcher's map-marker polling loop (there's no Rust+ push event for markers). */
+    onMapEvent?(ctx: ModuleContext & { event: MapMarkerEvent }): void | Promise<void>;
+    /** Fired on a fixed interval per live connection, independent of any Rust+ push/poll event -
+     *  for modules that just need to refresh something periodically (e.g. a live info panel). */
+    onTick?(ctx: ModuleContext): void | Promise<void>;
 
     // ---- lifecycle (fired on toggle) ----
     onEnable?(scope: { guildId?: string; teamId?: string }): void | Promise<void>;
