@@ -13,7 +13,7 @@ export default {
             return await interaction.reply({ content: "You need Manage Server permission to manage permission groups.", flags: ["Ephemeral"] });
         }
         const guild = await GuildModel.findOne({ guildId: interaction.guild.id });
-        if (!guild) return await interaction.reply({ content: "Cant find your guild in database !", flags: ["Ephemeral"] });
+        if (!guild) return await interaction.reply({ content: "Can't find your guild in database!", flags: ["Ephemeral"] });
 
         const group = interaction.options.getSubcommandGroup(false);
         const subcommand = interaction.options.getSubcommand();
@@ -33,7 +33,7 @@ export default {
                 const name = interaction.options.getString("name", true);
                 await interaction.deferReply({ flags: ["Ephemeral"] });
                 const permGroup = await PermissionGroupModel.findOne({ guildId: guild.guildId, name });
-                if (!permGroup) return await interaction.editReply({ content: "Cant find that permission group" });
+                if (!permGroup) return await interaction.editReply({ content: "Can't find that permission group" });
                 await permGroup.deleteWithRole();
                 return await interaction.editReply({ content: `Permission group "${name}" deleted !` });
             }
@@ -51,7 +51,7 @@ export default {
                 const permission = interaction.options.getString("permission", true) as PermissionId;
                 await interaction.deferReply({ flags: ["Ephemeral"] });
                 const permGroup = await PermissionGroupModel.findOne({ guildId: guild.guildId, name });
-                if (!permGroup) return await interaction.editReply({ content: "Cant find that permission group" });
+                if (!permGroup) return await interaction.editReply({ content: "Can't find that permission group" });
                 if (subcommand === "add-permission") {
                     if (!permGroup.permissions.includes(permission)) permGroup.permissions.push(permission);
                 } else {
@@ -67,7 +67,7 @@ export default {
             const user = interaction.options.getUser("user", true);
             await interaction.deferReply({ flags: ["Ephemeral"] });
             const permGroup = await PermissionGroupModel.findOne({ guildId: guild.guildId, name });
-            if (!permGroup) return await interaction.editReply({ content: "Cant find that permission group" });
+            if (!permGroup) return await interaction.editReply({ content: "Can't find that permission group" });
             const result = subcommand === "assign" ? await permGroup.addMember(user.id) : await permGroup.removeMember(user.id);
             if (!result.ok) return await interaction.editReply({ content: result.error });
             return await interaction.editReply({ content: "Done." });

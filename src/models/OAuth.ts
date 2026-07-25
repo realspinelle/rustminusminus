@@ -2,6 +2,7 @@ import axios from "axios";
 import { Document, model, Schema, Types } from "mongoose";
 import crypto from "crypto"
 import type { DiscordPartialGuild, DiscordUser } from "../types/DiscordApi";
+import { withCache } from "../utils";
 const OauthSchema = new Schema({
     cookieId: { type: String, required: true, unique: true },
     userId: { type: String },
@@ -22,60 +23,47 @@ const DISCORD_CACHE_TTL_MS = 5 * 60_000;
 
 export class OauthClass extends Document<Types.ObjectId> {
     cookieId!: string;
-    userId?: String;
-    redirectTo?: String;
+    userId?: string;
+    redirectTo?: string;
     expiration?: Date;
     accessToken?: string;
 
-    private static userCache = new Map<string, { data: DiscordUser; expiresAt: number }>();
-    private static userInFlight = new Map<string, Promise<DiscordUser | null>>();
-    private static guildsCache = new Map<string, { data: DiscordPartialGuild[]; expiresAt: number }>();
-    private static guildsInFlight = new Map<string, Promise<DiscordPartialGuild[] | null>>();
+    private static userCache = new Map<string, { expires: number; promise: Promise<DiscordUser> }>();
+    private static guildsCache = new Map<string, { expires: number; promise: Promise<DiscordPartialGuild[]> }>();
 
+    // withCache only skips caching a call that throws (see its doc comment), so a failed fetch
+    // has to throw internally and get converted back to null here - this preserves the "failures
+    // are never cached" behavior described above.
     async getUser(): Promise<DiscordUser | null> {
-        const cached = OauthClass.userCache.get(this.cookieId);
-        if (cached && cached.expiresAt > Date.now()) return cached.data;
-        const inFlight = OauthClass.userInFlight.get(this.cookieId);
-        if (inFlight) return inFlight;
-        const request = (async () => {
-            try {
+        try {
+            return await withCache(OauthClass.userCache, this.cookieId, DISCORD_CACHE_TTL_MS, async () => {
                 const userRes = await axios.get("https://discord.com/api/users/@me", {
                     headers: { Authorization: `Bearer ${this.accessToken}` },
                     validateStatus: () => true
                 });
-                if (userRes.status != 200) return null;
-                OauthClass.userCache.set(this.cookieId, { data: userRes.data, expiresAt: Date.now() + DISCORD_CACHE_TTL_MS });
+                if (userRes.status != 200) throw new Error(`Discord user fetch failed with status ${userRes.status}`);
                 return userRes.data;
-            } finally {
-                OauthClass.userInFlight.delete(this.cookieId);
-            }
-        })();
-        OauthClass.userInFlight.set(this.cookieId, request);
-        return request;
+            });
+        } catch {
+            return null;
+        }
     }
 
     async getGuilds(): Promise<DiscordPartialGuild[] | null> {
-        const cached = OauthClass.guildsCache.get(this.cookieId);
-        if (cached && cached.expiresAt > Date.now()) return cached.data;
-        const inFlight = OauthClass.guildsInFlight.get(this.cookieId);
-        if (inFlight) return inFlight;
-        const request = (async () => {
-            try {
+        try {
+            return await withCache(OauthClass.guildsCache, this.cookieId, DISCORD_CACHE_TTL_MS, async () => {
                 const guilds = await axios.get("https://discord.com/api/users/@me/guilds", {
                     headers: {
                         Authorization: `Bearer ${this.accessToken}`,
                     },
                     validateStatus: () => true
                 });
-                if (guilds.status != 200) return null;
-                OauthClass.guildsCache.set(this.cookieId, { data: guilds.data, expiresAt: Date.now() + DISCORD_CACHE_TTL_MS });
+                if (guilds.status != 200) throw new Error(`Discord guilds fetch failed with status ${guilds.status}`);
                 return guilds.data;
-            } finally {
-                OauthClass.guildsInFlight.delete(this.cookieId);
-            }
-        })();
-        OauthClass.guildsInFlight.set(this.cookieId, request);
-        return request;
+            });
+        } catch {
+            return null;
+        }
     }
 
     static generateRandomString(length = 64) {

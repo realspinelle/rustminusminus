@@ -64,7 +64,7 @@ export async function connectAll(): Promise<void> {
     const guilds = await GuildModel.find();
     for (const guild of guilds) {
         for (const t of guild.teams) {
-            const team = await TeamModel.findOne({ id: t._id });
+            const team = await TeamModel.findById(t._id);
             await team?.connectRustPlus();
         }
     }

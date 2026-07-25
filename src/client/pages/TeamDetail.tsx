@@ -205,7 +205,7 @@ export function Component() {
                 Servers
             </h2>
             {data.servers.length === 0 ? (
-                <EmptyState>This team hasn't paired with any servers yet.</EmptyState>
+                <EmptyState>This team hasn&apos;t paired with any servers yet.</EmptyState>
             ) : (
                 <Table>
                     <Thead>

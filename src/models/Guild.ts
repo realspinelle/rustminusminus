@@ -1,12 +1,10 @@
 import { Document, model, Schema, Types } from "mongoose";
-import { UserClass, UserModel } from "./User";
-import { ServerModel } from "./Server";
-import { TeamModel } from "./Team";
+import { TeamModel, type TeamClass } from "./Team";
 import { DiscordBot } from "../classes/DiscordBot";
 import { getRandomHexColor } from "../utils";
 import { disconnectTeam } from "../rustplus/connections";
 import { registry } from "../modules/ModuleRegistry";
-import { ChannelType, PermissionFlagsBits, Role, type ColorResolvable } from "discord.js";
+import { ChannelType, PermissionFlagsBits, Role, type Guild } from "discord.js";
 const GuildSchema = new Schema({
     guildId: { type: String, required: true, unique: true },
     teams: [{ type: Schema.Types.ObjectId, ref: "Team" }],
@@ -151,11 +149,8 @@ export class GuildClass extends Document<Types.ObjectId> {
         };
     }
 
-    async deleteTeamChannels(name: string) {
-        let team = await this.findTeamByName(name);
-        if (!team) return false;
-        let guild = this.getDiscordGuild();
-        if (!guild) return false;
+    /** Deletes a team's category and every channel parented under it, if the category still exists. */
+    private async deleteTeamCategoryAndChannels(guild: Guild, team: TeamClass): Promise<boolean> {
         const category = guild.channels.cache.get(team.discord.category.id);
         if (!category || category.type !== 4) {
             return false;
@@ -173,27 +168,21 @@ export class GuildClass extends Document<Types.ObjectId> {
         await category.delete();
         return true;
     }
+
+    async deleteTeamChannels(name: string) {
+        let team = await this.findTeamByName(name);
+        if (!team) return false;
+        let guild = this.getDiscordGuild();
+        if (!guild) return false;
+        return this.deleteTeamCategoryAndChannels(guild, team);
+    }
     async deleteTeam(name: string) {
         let team = await this.findTeamByName(name);
         if (!team) return false;
         disconnectTeam(team._id);
         let guild = this.getDiscordGuild();
         if (!guild) return false;
-        const category = guild.channels.cache.get(team.discord.category.id);
-        if (!category || category.type !== 4) {
-            return false;
-        }
-        const channelsToDelete = guild.channels.cache.filter(
-            ch => ch.parentId === team.discord.category.id
-        );
-        for (const channel of channelsToDelete.values()) {
-            try {
-                await channel.delete();
-            } catch (err) {
-                console.error(`Failed to delete ${channel.name}:${channel.id} :`, err);
-            }
-        }
-        await category.delete();
+        if (!await this.deleteTeamCategoryAndChannels(guild, team)) return false;
         await guild.roles.delete(team.discord.roleId);
         this.teams = (await this.getTeams()).filter(e => e.name != name).map(e => e._id);
         await this.save();
@@ -215,22 +204,6 @@ export class GuildClass extends Document<Types.ObjectId> {
     async findTeamByName(name: string) {
         return (await this.getTeams()).find(e => e.name == name) || null;
     }
-
-    // async findUserTeam(user: UserClass) {
-    //     return (await this.getTeams()).find(e => e.users.includes(user.id)) || null;
-    // }
-
-    // async findTeamServers(name: string) {
-    //     let team = await this.findTeamByName(name);
-    //     if (!team) return null;
-    //     let servers: string[] = [];
-    //     for (let userId of await team.getUsers()) {
-    //         let user = await UserModel.findById(userId);
-    //         if (!user) continue;
-    //         servers.push(...user.credentials.servers.map(e => e.serverId));
-    //     }
-    //     return Promise.all([...new Set(servers)].map(async a => await ServerModel.findOne({ serverId: a })));
-    // }
 }
 
 GuildSchema.loadClass(GuildClass);

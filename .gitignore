@@ -36,3 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 fmcCredentials
 public/js
 public/css
+
+# re-downloaded from api.carbonmod.gg on every boot (see src/downloadItemList.ts)
+items.json

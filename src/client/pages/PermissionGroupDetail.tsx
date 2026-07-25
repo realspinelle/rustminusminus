@@ -176,7 +176,7 @@ export function Component() {
             </h2>
             <p className="mb-3 text-xs text-neutral-500">
                 This group has its own Discord role — adding or removing a member here assigns or removes
-                that role, so you can also manage membership directly from Discord's role settings.
+                that role, so you can also manage membership directly from Discord&apos;s role settings.
             </p>
             {data.discordUsers.length === 0 ? (
                 <EmptyState>No members assigned yet.</EmptyState>

@@ -11,7 +11,7 @@ export async function getGuildsForUser(cookieToken: string | undefined) {
     const auth = await OauthModel.findOne({ cookieId: cookieToken });
     if (!auth) return fail(401, "Not logged in");
     const discordGuilds = await auth.getGuilds();
-    if (!discordGuilds) return fail(401, "Cant fetch guilds");
+    if (!discordGuilds) return fail(401, "Can't fetch guilds");
     const managed = discordGuilds.filter(g => {
         if (!g.permissions) return false;
         return (BigInt(g.permissions) & BigInt(PermissionFlagsBits.ManageGuild)) === BigInt(PermissionFlagsBits.ManageGuild);

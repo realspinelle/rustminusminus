@@ -4,6 +4,7 @@ import { ServerModel } from "./Server";
 import { connectTeam, disconnectTeam, getActiveRustplus } from "../rustplus/connections";
 import { GuildModel } from "./Guild";
 import { registry } from "../modules/ModuleRegistry";
+import { grantRole, revokeRole } from "../utils/discordRoles";
 
 const ServerSchema = {
     serverId: { type: String, required: true },
@@ -170,11 +171,11 @@ export class TeamClass extends Document<Types.ObjectId> {
 
     async connectRustPlus() {
         let user = await this.getActiveCredentialUser();
-        if (!user) return console.log("cant find user");
+        if (!user) return console.log("connectRustPlus: no active credential user");
         let cred = await this.getActiveServerCredential();
-        if (!cred) return console.log("cant find cred");
+        if (!cred) return console.log("connectRustPlus: no credential for the active server");
         let server = await this.getActiveServer();
-        if (!server) return console.log("cant find server");
+        if (!server) return console.log("connectRustPlus: active server not found");
         await connectTeam(this, server.ip, server.port, user.credentials.steam_id, cred.playerToken);
     }
     async getGuild() {
@@ -186,67 +187,38 @@ export class TeamClass extends Document<Types.ObjectId> {
         if (!userDb) return { ok: false, error: "This user hasn't linked their account" };
         if (this.users.some(id => id.equals(userDb._id))) return { ok: false, error: "This user is already in this team" };
         const discordGuild = (await this.getGuild())?.getDiscordGuild();
-        if (!discordGuild) return { ok: false, error: "Cant find the Discord server" };
-        const member = discordGuild.members.cache.get(discordUserId)
-            ?? await discordGuild.members.fetch(discordUserId).catch(() => null);
-        if (!member) return { ok: false, error: "Cant find that user in the server" };
-        if (!member.roles.cache.has(this.discord.roleId)) {
-            const botMember = discordGuild.members.me;
-            if (!botMember) return { ok: false, error: "Cant find the bot in the server" };
-            if (!botMember.permissions.has("Administrator")) return { ok: false, error: "This bot doesnt have administrator permissions" };
-            if (botMember.roles.highest.position <= member.roles.highest.position) return { ok: false, error: "Make the bot role the highest on the server or manually assign the role" };
-            await member.roles.add(this.discord.roleId);
-        }
+        if (!discordGuild) return { ok: false, error: "Can't find the Discord server" };
+        const result = await grantRole(discordGuild, this.discord.roleId, discordUserId, "Administrator", "This bot doesn't have Administrator permissions");
+        if (!result.ok) return result;
         this.users.push(userDb._id);
         await this.save();
         return { ok: true };
     }
-    async getCategoryChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.category.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
+
+    async removeMember(discordUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+        const userDb = await UserModel.findOne({ userId: discordUserId });
+        if (!userDb) return { ok: false, error: "This user hasn't linked their account" };
+        if (!this.users.some(id => id.equals(userDb._id))) return { ok: false, error: "This user is not in this team" };
+        if (this.activeCredentialUserId?.equals(userDb._id)) {
+            return { ok: false, error: "Change the active credential before removing this user from the team" };
+        }
+        const discordGuild = (await this.getGuild())?.getDiscordGuild();
+        if (!discordGuild) return { ok: false, error: "Can't find the Discord server" };
+        const result = await revokeRole(discordGuild, this.discord.roleId, discordUserId);
+        if (!result.ok) return result;
+        this.users = this.users.filter(id => !id.equals(userDb._id));
+        await this.save();
+        return { ok: true };
     }
-    async getPlayerActivityChannel() {
+    /**
+     * Looks up one of this team's provisioned text channels by its `discord` sub-key. Excludes
+     * "category" (a CategoryChannel, never text-based - fetch it directly via
+     * `guild.channels.cache.get(team.discord.category.id)` instead, as Guild.ts already does).
+     */
+    async getChannel(key: Exclude<keyof TeamClass["discord"], "roleId" | "category">) {
         let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.playerActivity.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getTeamChatChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.teamChat.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getInformationChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.information.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getServersChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.servers.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getSwitchesChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.switches.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getAlarmsChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel =  guild?.channels.cache.get(this.discord.alarms.id);
-        if (channel?.isTextBased()) return null;
-        return channel;
-    }
-    async getStorageMonitorsChannel() {
-        let guild = (await this.getGuild())?.getDiscordGuild();
-        let channel = guild?.channels.cache.get(this.discord.storageMonitors.id);
-        if (channel?.isTextBased()) return null;
+        let channel = guild?.channels.cache.get(this.discord[key].id);
+        if (!channel?.isTextBased()) return null;
         return channel;
     }
     async getDiscordRole() {

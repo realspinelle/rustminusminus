@@ -1,9 +1,13 @@
 FROM oven/bun:latest
 
-COPY package.json ./
-COPY bun.lockb ./
-COPY src ./
+WORKDIR /app
 
-RUN bun install
+COPY package.json bun.lock tsconfig.json ./
+RUN bun install --frozen-lockfile
+
+COPY src ./src
+COPY public ./public
+
+EXPOSE 3000
 
 CMD ["bun", "src/index.ts"]

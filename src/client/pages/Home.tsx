@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-export default () => {
+export default function Home() {
     return (
         <div className="flex flex-col items-start gap-4 py-16">
             <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs uppercase tracking-wide text-neutral-400">

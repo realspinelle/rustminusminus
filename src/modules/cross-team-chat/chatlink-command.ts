@@ -35,7 +35,7 @@ export const chatLinkCommand = {
             return await interaction.reply({ content: "Not authorized", flags: ["Ephemeral"] });
         }
         const guild = await GuildModel.findOne({ guildId: interaction.guild.id });
-        if (!guild) return await interaction.reply({ content: "Cant find your guild in database !", flags: ["Ephemeral"] });
+        if (!guild) return await interaction.reply({ content: "Can't find your guild in database!", flags: ["Ephemeral"] });
 
         const subcommand = interaction.options.getSubcommand();
 
@@ -53,9 +53,9 @@ export const chatLinkCommand = {
             const teamName = interaction.options.getString("team", true);
             await interaction.deferReply({ flags: ["Ephemeral"] });
             const link = await ChatLinkModel.findOne({ guildId: guild.guildId, name });
-            if (!link) return await interaction.editReply({ content: "Cant find that chat link" });
+            if (!link) return await interaction.editReply({ content: "Can't find that chat link" });
             const team = await guild.findTeamByName(teamName);
-            if (!team) return await interaction.editReply({ content: "Cant find that team" });
+            if (!team) return await interaction.editReply({ content: "Can't find that team" });
             const alreadyLinked = await ChatLinkModel.findOne({ guildId: guild.guildId, teamIds: team._id });
             if (alreadyLinked) return await interaction.editReply({ content: "That team is already in a chat link" });
             link.teamIds.push(team._id);
@@ -67,7 +67,7 @@ export const chatLinkCommand = {
             const teamName = interaction.options.getString("team", true);
             await interaction.deferReply({ flags: ["Ephemeral"] });
             const team = await guild.findTeamByName(teamName);
-            if (!team) return await interaction.editReply({ content: "Cant find that team" });
+            if (!team) return await interaction.editReply({ content: "Can't find that team" });
             const link = await ChatLinkModel.findOne({ guildId: guild.guildId, teamIds: team._id });
             if (!link) return await interaction.editReply({ content: "That team is not in a chat link" });
             link.teamIds = link.teamIds.filter((id) => !id.equals(team._id));

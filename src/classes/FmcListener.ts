@@ -24,9 +24,9 @@ const ENTITY_TYPE_TO_PAIRED_ITEMS_KEY: Record<AppEntityType, "smartSwitch" | "sm
 export class FmcListener {
     listener?: RustFcmListener;
     static activeListeners: Map<string, FmcListener> = new Map();
-    constructor(public androidId: string, public securityToken: string, public userId: String) {
+    constructor(public androidId: string, public securityToken: string, public userId: string) {
     }
-    static async userListen(userId: String) {
+    static async userListen(userId: string) {
         // stop any previously running listener for this user so we never leak sockets
         this.activeListeners.get(userId.toString())?.stopListen();
         let userData = await UserModel.findOne({ userId });
@@ -36,7 +36,7 @@ export class FmcListener {
         this.activeListeners.set(userId.toString(), listener);
         listener.listen();
     }
-    static async userStopListen(userId: String) {
+    static async userStopListen(userId: string) {
         this.activeListeners.get(userId.toString())?.stopListen();
     }
     static async ListenToAll() {
@@ -52,10 +52,9 @@ export class FmcListener {
     }
     async pairEntity(serverId: string, entityId: string, pairedItemsKey: "smartSwitch" | "smartAlarm" | "storageMonitor") {
         let teams = await TeamModel.find({ activeServerId: serverId });
-        let lthis = this;
         teams = await asyncFilter(teams, async (team) => {
             let users = await team.getUsers();
-            return !!users.find(e => e.userId == lthis.userId);
+            return !!users.find(e => e.userId == this.userId);
         });
         for (let team of teams) {
             let server = team.servers.find(e => e.serverId == team.activeServerId);

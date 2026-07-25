@@ -7,7 +7,7 @@ export default {
     command: async (interaction) => {
         const subcommand = interaction.options.getSubcommand();
         switch (subcommand) {
-            case "add":
+            case "add": {
                 let user = await UserModel.findOne({ userId: interaction.user.id });
                 if (user) return await interaction.reply({ content: "You are already linked!", flags: ["Ephemeral"] });
                 let gcm_android_id = interaction.options.getString("gcm_android_id", true);
@@ -28,6 +28,7 @@ export default {
                 FmcListener.userListen(interaction.user.id);
                 await interaction.reply({ content: "Your account is now linked!", flags: ["Ephemeral"] });
                 break;
+            }
 
             case "delete":
                 await UserModel.deleteOne({ userId: interaction.user.id });
