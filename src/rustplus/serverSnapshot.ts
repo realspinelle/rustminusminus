@@ -4,18 +4,10 @@ import type { TeamClass } from "../models/Team";
 import { ServerModel } from "../models/Server";
 import { getActiveRustplus } from "./connections";
 import { withCache } from "../utils";
-import { getItemCatalog } from "./itemCatalog";
 import { displayName } from "./pairedItems";
+import { readStorageEntity, type StorageEntity } from "./storageMonitors";
 
-export type StorageEntity =
-    | { id: string; name: string; kind: "cupboard"; hasProtection: boolean; protectionExpiry: number | null }
-    | {
-        id: string;
-        name: string;
-        kind: "storage";
-        capacity: number;
-        items: { itemId: number; name: string; shortName: string; quantity: number; isBlueprint: boolean }[];
-    };
+export type { StorageEntity };
 
 export interface ServerSnapshot {
     players: number;
@@ -87,7 +79,6 @@ async function resolveConnection(team: TeamClass, serverId: string): Promise<{ r
 }
 
 async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<ServerSnapshot> {
-    const catalog = await getItemCatalog();
     const info = await rustplus.getInfo();
 
     const [switches, alarms, storage] = await Promise.all([
@@ -104,31 +95,7 @@ async function buildSnapshot(rustplus: RustPlus, server: TeamServer): Promise<Se
                 lastTriggered: a.lastTriggered ? a.lastTriggered.toISOString() : null,
             };
         })),
-        Promise.all(server.pairedItems.storageMonitor.map(async (s): Promise<StorageEntity> => {
-            const entityInfo = await rustplus.getEntityInfo(Number(s.id));
-            const payload = entityInfo.payload;
-            const name = displayName(s, "storageMonitor");
-            if (payload?.hasProtection) {
-                return {
-                    id: s.id,
-                    name,
-                    kind: "cupboard",
-                    hasProtection: true,
-                    protectionExpiry: payload.protectionExpiry ?? null,
-                };
-            }
-            const items = (payload?.items ?? []).map(item => {
-                const def = catalog.get(item.itemId);
-                return {
-                    itemId: item.itemId,
-                    name: def?.name ?? `Unknown item ${item.itemId}`,
-                    shortName: def?.shortName ?? "",
-                    quantity: item.quantity,
-                    isBlueprint: item.itemIsBlueprint,
-                };
-            });
-            return { id: s.id, name, kind: "storage", capacity: payload?.capacity ?? 0, items };
-        })),
+        Promise.all(server.pairedItems.storageMonitor.map(s => readStorageEntity(rustplus, s))),
     ]);
 
     return {
