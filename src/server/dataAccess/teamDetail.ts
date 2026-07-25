@@ -13,6 +13,11 @@ export async function getTeamDetail(cookieToken: string | undefined, guildId: st
     const team = await findGuildTeam(guild, teamId);
     if (!team) return fail(404, "Team not found");
     const users = await team.getUsers();
+    const discordGuild = guild.getDiscordGuild();
+    const memberIds = users.map(u => u.userId);
+    const members = discordGuild && memberIds.length
+        ? await discordGuild.members.fetch({ user: memberIds }).catch(() => discordGuild.members.cache)
+        : null;
     const servers = await Promise.all(team.servers.map(async s => {
         const server = await ServerModel.findOne({ serverId: s.serverId });
         return {
@@ -30,7 +35,11 @@ export async function getTeamDetail(cookieToken: string | undefined, guildId: st
     return ok({
         id: team._id.toString(),
         name: team.name,
-        users: users.map(u => ({ id: u._id.toString(), userId: u.userId })),
+        users: users.map(u => ({
+            id: u._id.toString(),
+            userId: u.userId,
+            displayName: members?.get(u.userId)?.displayName ?? null,
+        })),
         activeServerId: team.activeServerId ?? null,
         activeCredentialUserId: team.activeCredentialUserId?.toString() ?? null,
         servers,
